@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+suumoenv/
+
+# データファイル
+*.csv
+*.html
+*.png
+debug_page_*.html
+
+# ログファイル
+*.log
+
+# ChromeDriver
+chromedriver
+
+# その他
+.DS_Store
