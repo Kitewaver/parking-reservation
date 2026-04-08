@@ -1284,7 +1284,7 @@ def index():
     </footer>
 
     <script>
-        const stripe = Stripe('pk_test_51T0HAtR79rW14GmdmCOvmZaWGgfFXUzEctTgJ4UT555NcH8RnWk5V0MXKcxrFprMhPbTdJEwnVpOGp6    ekqO65pTY00Kb69zulE');
+        const stripe = Stripe('{{ stripe_public_key }}');
         const elements = stripe.elements();
         const cardElement = elements.create('card', {
             hidePostalCode: true  // 郵便番号を非表示
@@ -1459,7 +1459,7 @@ def index():
     </script>
 </body>
 </html>
-    ''')
+    ''', stripe_public_key=STRIPE_PUBLIC_KEY)
 
 
 @app.route('/cancel')
@@ -2034,8 +2034,8 @@ def admin():
 @app.route('/static/parking_photo.png')
 def parking_photo():
     """駐車場写真を配信"""
-    # ホームディレクトリのstaticフォルダから配信
-    photo_path = os.path.join(os.path.expanduser('~'), 'static', 'parking_photo.png')
+    # カレントディレクトリのstaticフォルダから配信
+    photo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'parking_photo.png')
     if os.path.exists(photo_path):
         return send_file(photo_path, mimetype='image/png')
     # ファイルがない場合は404
