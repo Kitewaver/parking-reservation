@@ -22,6 +22,17 @@ import os
 
 app = Flask(__name__)
 
+# データベース設定
+DATABASE_URL = os.environ.get('DATABASE_URL')
+
+# PostgreSQL用のインポート（利用可能な場合）
+if DATABASE_URL and DATABASE_URL.startswith('postgres'):
+    import psycopg2
+    import psycopg2.extras
+    USE_POSTGRES = True
+else:
+    USE_POSTGRES = False
+
 # Stripe設定
 stripe.api_key = os.environ.get('STRIPE_SECRET_KEY', 'sk_test_YOUR_SECRET_KEY')
 STRIPE_PUBLIC_KEY = os.environ.get('STRIPE_PUBLIC_KEY', 'pk_test_51T0HAtR79rW14GmdmCOvmZaWGgfFXUzEctTgJ4UT555NcH8RnWk5V0MXKcxrFprMhPbTdJEwnVpOGp6ekqO65pTY00Kb69zulE')
@@ -43,9 +54,15 @@ DB_PATH = os.environ.get('DB_PATH', '/tmp/parking_system.db' if os.path.exists('
 
 
 def get_db_connection():
-    """データベース接続を取得（タイムアウト設定付き）"""
-    conn = sqlite3.connect(DB_PATH, timeout=10.0)
-    return conn
+    """データベース接続を取得（PostgreSQL または SQLite）"""
+    if USE_POSTGRES:
+        # PostgreSQL接続
+        conn = psycopg2.connect(DATABASE_URL, sslmode='require')
+        return conn
+    else:
+        # SQLite接続（ローカル開発用）
+        conn = sqlite3.connect(DB_PATH, timeout=10.0)
+        return conn
 
 
 def send_reservation_email(to_email, customer_name, reservation_data):
@@ -167,49 +184,86 @@ def send_cancellation_email(to_email, customer_name, reservation_data, refund_am
 
 
 def init_database():
-    """データベース初期化"""
+    """データベース初期化（PostgreSQL / SQLite対応）"""
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # 予約テーブル
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS reservations (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            payment_id TEXT UNIQUE,
-            car_number TEXT,
-            customer_name TEXT,
-            phone TEXT,
-            email TEXT,
-            date TEXT,
-            time_slot TEXT,
-            amount INTEGER,
-            status TEXT,
-            created_at TEXT,
-            cancelled_at TEXT,
-            UNIQUE(date, time_slot, status) ON CONFLICT IGNORE
-        )
-    ''')
-    
-    # Webhookイベント記録テーブル（二重処理防止）
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS webhook_events (
-            event_id TEXT PRIMARY KEY,
-            event_type TEXT NOT NULL,
-            payment_id TEXT,
-            processed_at TEXT NOT NULL,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
-    # 休業日テーブル
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS closed_dates (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            date TEXT UNIQUE,
-            reason TEXT,
-            created_at TEXT
-        )
-    ''')
+    if USE_POSTGRES:
+        # PostgreSQL用SQL
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS reservations (
+                id SERIAL PRIMARY KEY,
+                payment_id TEXT UNIQUE,
+                car_number TEXT,
+                customer_name TEXT,
+                phone TEXT,
+                email TEXT,
+                date TEXT,
+                time_slot TEXT,
+                amount INTEGER,
+                status TEXT,
+                created_at TEXT,
+                cancelled_at TEXT,
+                UNIQUE(date, time_slot, status)
+            )
+        ''')
+        
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS webhook_events (
+                event_id TEXT PRIMARY KEY,
+                event_type TEXT NOT NULL,
+                payment_id TEXT,
+                processed_at TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS closed_dates (
+                id SERIAL PRIMARY KEY,
+                date TEXT UNIQUE,
+                reason TEXT,
+                created_at TEXT
+            )
+        ''')
+    else:
+        # SQLite用SQL
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS reservations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                payment_id TEXT UNIQUE,
+                car_number TEXT,
+                customer_name TEXT,
+                phone TEXT,
+                email TEXT,
+                date TEXT,
+                time_slot TEXT,
+                amount INTEGER,
+                status TEXT,
+                created_at TEXT,
+                cancelled_at TEXT,
+                UNIQUE(date, time_slot, status) ON CONFLICT IGNORE
+            )
+        ''')
+        
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS webhook_events (
+                event_id TEXT PRIMARY KEY,
+                event_type TEXT NOT NULL,
+                payment_id TEXT,
+                processed_at TEXT NOT NULL,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS closed_dates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date TEXT UNIQUE,
+                reason TEXT,
+                created_at TEXT
+            )
+        ''')
     
     conn.commit()
     conn.close()
