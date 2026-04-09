@@ -182,7 +182,19 @@ def init_database():
             amount INTEGER,
             status TEXT,
             created_at TEXT,
-            cancelled_at TEXT
+            cancelled_at TEXT,
+            UNIQUE(date, time_slot, status) ON CONFLICT IGNORE
+        )
+    ''')
+    
+    # Webhookイベント記録テーブル（二重処理防止）
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS webhook_events (
+            event_id TEXT PRIMARY KEY,
+            event_type TEXT NOT NULL,
+            payment_id TEXT,
+            processed_at TEXT NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
     ''')
     
@@ -289,6 +301,49 @@ def create_payment_intent():
     try:
         data = request.json
         time_slot = data.get('time_slot')
+        date = data.get('date')
+        
+        # 二重予約チェック（トランザクション開始）
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # 既に予約が存在するかチェック
+        cursor.execute('''
+            SELECT * FROM reservations 
+            WHERE date = ? AND time_slot = ? AND status IN ('confirmed', 'pending')
+        ''', (date, time_slot))
+        
+        if cursor.fetchone():
+            conn.close()
+            return jsonify({'error': 'この時間帯は既に予約されています'}), 400
+        
+        # 一時予約を作成（pending状態）
+        temp_reservation_id = f"temp_{int(datetime.now().timestamp() * 1000)}"
+        
+        try:
+            cursor.execute('''
+                INSERT INTO reservations 
+                (payment_id, car_number, customer_name, phone, email, date, time_slot, amount, status, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+            ''', (
+                temp_reservation_id,
+                data.get('car_number'),
+                data.get('customer_name'),
+                data.get('phone'),
+                data.get('email'),
+                date,
+                time_slot,
+                calculate_price(time_slot),
+                datetime.now().isoformat()
+            ))
+            conn.commit()
+        except sqlite3.IntegrityError:
+            conn.close()
+            return jsonify({'error': 'この時間帯は既に予約されています'}), 400
+        
+        conn.close()
+        
+        # Stripe PaymentIntent作成
         amount = calculate_price(time_slot)
         
         payment_intent = stripe.PaymentIntent.create(
@@ -300,8 +355,9 @@ def create_payment_intent():
                 'customer_name': data.get('customer_name'),
                 'phone': data.get('phone'),
                 'email': data.get('email'),
-                'date': data.get('date'),
-                'time_slot': time_slot
+                'date': date,
+                'time_slot': time_slot,
+                'temp_reservation_id': temp_reservation_id  # 追加
             }
         )
         
@@ -350,6 +406,34 @@ def stripe_webhook():
     
     try:
         print(f"\n📨 Webhook: {event_type}")
+        
+        # イベントIDを取得（二重処理防止）
+        event_id = event.get('id') if isinstance(event, dict) else event['id']
+        
+        # 既に処理済みかチェック
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT event_id FROM webhook_events WHERE event_id = ?', (event_id,))
+        if cursor.fetchone():
+            conn.close()
+            print(f"⚠️  既に処理済みのイベント: {event_id}")
+            return jsonify({'status': 'success', 'message': 'Already processed'}), 200
+        
+        # イベントを記録（処理前）
+        try:
+            cursor.execute('''
+                INSERT INTO webhook_events (event_id, event_type, payment_id, processed_at)
+                VALUES (?, ?, ?, ?)
+            ''', (event_id, event_type, 'processing', datetime.now().isoformat()))
+            conn.commit()
+        except sqlite3.IntegrityError:
+            # 別のリクエストが同時に処理中
+            conn.close()
+            print(f"⚠️  同時処理検出: {event_id}")
+            return jsonify({'status': 'success', 'message': 'Concurrent processing detected'}), 200
+        
+        conn.close()
         
         if event_type == 'payment_intent.succeeded' or event_type == 'charge.succeeded':
             # payment_intent.succeeded と charge.succeeded の両方に対応
@@ -403,31 +487,73 @@ def stripe_webhook():
                 traceback.print_exc()
                 return jsonify({'status': 'success'}), 200
             
-            # metadataが存在し、車両番号がある場合のみ予約を作成
+            # metadataが存在し、車両番号がある場合のみ予約を確定
             if metadata and 'car_number' in metadata and metadata['car_number']:
                 conn = get_db_connection()
                 cursor = conn.cursor()
                 
                 try:
-                    cursor.execute('''
-                        INSERT INTO reservations 
-                        (payment_id, car_number, customer_name, phone, email, date, time_slot, amount, status, created_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ''', (
-                        payment_id,
-                        metadata.get('car_number', ''),
-                        metadata.get('customer_name', ''),
-                        metadata.get('phone', ''),
-                        metadata.get('email', ''),
-                        metadata.get('date', ''),
-                        metadata.get('time_slot', ''),
-                        amount,
-                        'confirmed',
-                        datetime.now().isoformat()
-                    ))
+                    # 一時予約IDがある場合は更新、ない場合は新規作成
+                    temp_reservation_id = metadata.get('temp_reservation_id')
+                    
+                    if temp_reservation_id:
+                        # 一時予約を本予約に更新
+                        cursor.execute('''
+                            UPDATE reservations 
+                            SET payment_id = ?, status = 'confirmed'
+                            WHERE payment_id = ? AND status = 'pending'
+                        ''', (payment_id, temp_reservation_id))
+                        
+                        if cursor.rowcount > 0:
+                            print(f"✅ 一時予約を本予約に更新: {payment_id}")
+                        else:
+                            print(f"⚠️  一時予約が見つかりません、新規作成します")
+                            # フォールバック: 新規作成
+                            cursor.execute('''
+                                INSERT INTO reservations 
+                                (payment_id, car_number, customer_name, phone, email, date, time_slot, amount, status, created_at)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ''', (
+                                payment_id,
+                                metadata.get('car_number', ''),
+                                metadata.get('customer_name', ''),
+                                metadata.get('phone', ''),
+                                metadata.get('email', ''),
+                                metadata.get('date', ''),
+                                metadata.get('time_slot', ''),
+                                amount,
+                                'confirmed',
+                                datetime.now().isoformat()
+                            ))
+                    else:
+                        # 旧バージョン対応: temp_reservation_idがない場合は新規作成
+                        cursor.execute('''
+                            INSERT INTO reservations 
+                            (payment_id, car_number, customer_name, phone, email, date, time_slot, amount, status, created_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ''', (
+                            payment_id,
+                            metadata.get('car_number', ''),
+                            metadata.get('customer_name', ''),
+                            metadata.get('phone', ''),
+                            metadata.get('email', ''),
+                            metadata.get('date', ''),
+                            metadata.get('time_slot', ''),
+                            amount,
+                            'confirmed',
+                            datetime.now().isoformat()
+                        ))
                     
                     conn.commit()
                     print(f"✅ 予約確定: {metadata.get('date')} {metadata.get('time_slot')}")
+                    
+                    # Webhookイベントにpayment_idを記録
+                    cursor.execute('''
+                        UPDATE webhook_events 
+                        SET payment_id = ?
+                        WHERE event_id = ?
+                    ''', (payment_id, event_id))
+                    conn.commit()
                     
                     # 予約完了メール送信
                     if metadata.get('email'):
@@ -443,8 +569,8 @@ def stripe_webhook():
                             }
                         )
                     
-                except sqlite3.IntegrityError:
-                    print(f"⚠️  既に処理済み: {payment_id}")
+                except sqlite3.IntegrityError as e:
+                    print(f"⚠️  既に処理済みまたは二重予約: {payment_id}, {e}")
                 except Exception as e:
 
                     print(f"❌ DB保存エラー: {e}")
