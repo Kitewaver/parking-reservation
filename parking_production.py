@@ -103,7 +103,7 @@ def send_reservation_email(to_email, customer_name, reservation_data):
                     <li>入庫2時間前まで: キャンセル可能（手数料¥100）</li>
                     <li>2時間を切った場合: キャンセル不可・全額収納</li>
                 </ul>
-                <p>キャンセルはこちら: <a href="http://localhost:5000/cancel">キャンセルページ</a></p>
+                <p>キャンセルはこちら: <a href="https://parking-reservation-rzck.onrender.com/cancel">キャンセルページ</a></p>
             </div>
             
             <p>ご不明な点がございましたら、お気軽にお問い合わせください。</p>
@@ -323,9 +323,14 @@ def check_availability():
             if time_slot == "morning" and current_hour >= 12:
                 # 午前枠は12時を過ぎたら予約不可
                 return jsonify({'available': False, 'reason': 'time_passed'})
-            elif time_slot == "afternoon" and current_hour >= 24:
-                # 午後枠は24時を過ぎたら予約不可（実質翌日）
-                return jsonify({'available': False, 'reason': 'time_passed'})
+            elif time_slot == "afternoon" and current_hour >= 0:
+                # 午後枠は当日中は常に予約可能（0-24時）
+                # 厳密には24時を過ぎたら翌日扱いなのでOK
+                pass
+        
+        # 過去の日付チェック
+        if selected_date.date() < now.date():
+            return jsonify({'available': False, 'reason': 'past_date'})
         
         conn = get_db_connection()
         cursor = conn.cursor()
