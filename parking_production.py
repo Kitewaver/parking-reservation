@@ -24,6 +24,7 @@ app = Flask(__name__)
 
 # Stripe設定
 stripe.api_key = os.environ.get('STRIPE_SECRET_KEY', 'sk_test_YOUR_SECRET_KEY')
+STRIPE_PUBLIC_KEY = os.environ.get('STRIPE_PUBLIC_KEY', 'pk_test_51T0HAtR79rW14GmdmCOvmZaWGgfFXUzEctTgJ4UT555NcH8RnWk5V0MXKcxrFprMhPbTdJEwnVpOGp6ekqO65pTY00Kb69zulE')
 
 # Webhookシークレット（Stripeダッシュボードから取得）
 WEBHOOK_SECRET = os.environ.get('WEBHOOK_SECRET', 'whsec_YOUR_WEBHOOK_SECRET')
@@ -36,7 +37,9 @@ SMTP_PORT = 587
 
 
 # データベースパス
-DB_PATH = os.environ.get('DB_PATH', 'parking_system.db')
+# 本番では外部DBサービス（PostgreSQL等）を推奨
+# Render環境では /tmp を使用（永続化しない一時データベース）
+DB_PATH = os.environ.get('DB_PATH', '/tmp/parking_system.db' if os.path.exists('/tmp') else 'parking_system.db')
 
 
 def get_db_connection():
@@ -408,32 +411,39 @@ def stripe_webhook():
         print(f"\n📨 Webhook: {event_type}")
         
         # イベントIDを取得（二重処理防止）
-        event_id = event.get('id') if isinstance(event, dict) else event['id']
-        
-        # 既に処理済みかチェック
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute('SELECT event_id FROM webhook_events WHERE event_id = ?', (event_id,))
-        if cursor.fetchone():
-            conn.close()
-            print(f"⚠️  既に処理済みのイベント: {event_id}")
-            return jsonify({'status': 'success', 'message': 'Already processed'}), 200
-        
-        # イベントを記録（処理前）
         try:
-            cursor.execute('''
-                INSERT INTO webhook_events (event_id, event_type, payment_id, processed_at)
-                VALUES (?, ?, ?, ?)
-            ''', (event_id, event_type, 'processing', datetime.now().isoformat()))
-            conn.commit()
-        except sqlite3.IntegrityError:
-            # 別のリクエストが同時に処理中
-            conn.close()
-            print(f"⚠️  同時処理検出: {event_id}")
-            return jsonify({'status': 'success', 'message': 'Concurrent processing detected'}), 200
+            event_id = event.get('id') if isinstance(event, dict) else event['id']
+        except (KeyError, AttributeError, TypeError) as e:
+            print(f"⚠️  イベントID取得エラー: {e}")
+            # イベントIDがない場合はスキップ（古い形式の可能性）
+            event_id = None
         
-        conn.close()
+        # イベントIDがある場合のみ重複チェック
+        if event_id:
+            # 既に処理済みかチェック
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute('SELECT event_id FROM webhook_events WHERE event_id = ?', (event_id,))
+            if cursor.fetchone():
+                conn.close()
+                print(f"⚠️  既に処理済みのイベント: {event_id}")
+                return jsonify({'status': 'success', 'message': 'Already processed'}), 200
+            
+            # イベントを記録（処理前）
+            try:
+                cursor.execute('''
+                    INSERT INTO webhook_events (event_id, event_type, payment_id, processed_at)
+                    VALUES (?, ?, ?, ?)
+                ''', (event_id, event_type, 'processing', datetime.now().isoformat()))
+                conn.commit()
+            except sqlite3.IntegrityError:
+                # 別のリクエストが同時に処理中
+                conn.close()
+                print(f"⚠️  同時処理検出: {event_id}")
+                return jsonify({'status': 'success', 'message': 'Concurrent processing detected'}), 200
+            
+            conn.close()
         
         if event_type == 'payment_intent.succeeded' or event_type == 'charge.succeeded':
             # payment_intent.succeeded と charge.succeeded の両方に対応
@@ -547,13 +557,14 @@ def stripe_webhook():
                     conn.commit()
                     print(f"✅ 予約確定: {metadata.get('date')} {metadata.get('time_slot')}")
                     
-                    # Webhookイベントにpayment_idを記録
-                    cursor.execute('''
-                        UPDATE webhook_events 
-                        SET payment_id = ?
-                        WHERE event_id = ?
-                    ''', (payment_id, event_id))
-                    conn.commit()
+                    # Webhookイベントにpayment_idを記録（event_idがある場合のみ）
+                    if event_id:
+                        cursor.execute('''
+                            UPDATE webhook_events 
+                            SET payment_id = ?
+                            WHERE event_id = ?
+                        ''', (payment_id, event_id))
+                        conn.commit()
                     
                     # 予約完了メール送信
                     if metadata.get('email'):
