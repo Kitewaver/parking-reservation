@@ -2251,14 +2251,15 @@ if __name__ == '__main__':
     print("  入庫2時間前まで無料")
     print("=" * 60)
     
-    # ローカル開発時のみ初期化
-    if not USE_POSTGRES:
-        init_database()
-    
+    init_database()  # データベース初期化
     app.run(host='0.0.0.0', port=5000, debug=True)
 else:
     # Gunicorn経由で起動する場合（本番環境）
     # PostgreSQLのテーブルは手動で作成済み
     print(f"🔗 データベース: {'PostgreSQL' if USE_POSTGRES else 'SQLite'}")
-    if not USE_POSTGRES:
-        init_database()  # SQLiteのみ自動初期化
+    try:
+        init_database()  # 自動初期化
+        print("✅ データベース準備完了")
+    except Exception as e:
+        print(f"⚠️  データベース初期化エラー（既存テーブルの可能性）: {e}")
+        # エラーでもサーバーは起動する
