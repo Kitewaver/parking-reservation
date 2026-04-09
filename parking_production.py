@@ -56,9 +56,14 @@ DB_PATH = os.environ.get('DB_PATH', '/tmp/parking_system.db' if os.path.exists('
 def get_db_connection():
     """データベース接続を取得（PostgreSQL または SQLite）"""
     if USE_POSTGRES:
-        # PostgreSQL接続
-        conn = psycopg2.connect(DATABASE_URL, sslmode='require')
-        return conn
+        # PostgreSQL接続（SSL必須）
+        try:
+            conn = psycopg2.connect(DATABASE_URL, sslmode='require')
+            return conn
+        except Exception as e:
+            print(f"❌ PostgreSQL接続エラー: {e}")
+            print(f"   DATABASE_URL: {DATABASE_URL[:50]}...")
+            raise
     else:
         # SQLite接続（ローカル開発用）
         conn = sqlite3.connect(DB_PATH, timeout=10.0)
@@ -2246,4 +2251,14 @@ if __name__ == '__main__':
     print("  入庫2時間前まで無料")
     print("=" * 60)
     
+    # ローカル開発時のみ初期化
+    if not USE_POSTGRES:
+        init_database()
+    
     app.run(host='0.0.0.0', port=5000, debug=True)
+else:
+    # Gunicorn経由で起動する場合（本番環境）
+    # PostgreSQLのテーブルは手動で作成済み
+    print(f"🔗 データベース: {'PostgreSQL' if USE_POSTGRES else 'SQLite'}")
+    if not USE_POSTGRES:
+        init_database()  # SQLiteのみ自動初期化
