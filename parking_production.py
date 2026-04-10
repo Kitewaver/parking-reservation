@@ -335,6 +335,9 @@ def is_cancellable(reservation_date, time_slot):
     else:
         res_datetime = res_datetime.replace(hour=0, minute=0, second=0)
     
+    # JSTタイムゾーンを付与
+    res_datetime = res_datetime.replace(tzinfo=JST)
+    
     # 2時間前まで
     cancellation_deadline = res_datetime - timedelta(hours=2)
     
@@ -968,11 +971,18 @@ def cancel_reservation():
             return jsonify({'error': f'Stripe払い戻しエラー: {str(e)}'}), 400
         
         # 予約をキャンセル状態に更新
-        cursor.execute('''
-            UPDATE reservations 
-            SET status = 'cancelled', cancelled_at = ?
-            WHERE payment_id = ?
-        ''', (datetime.now().isoformat(), payment_id))
+        if USE_POSTGRES:
+            cursor.execute('''
+                UPDATE reservations 
+                SET status = 'cancelled', cancelled_at = %s
+                WHERE payment_id = %s
+            ''', (datetime.now().isoformat(), payment_id))
+        else:
+            cursor.execute('''
+                UPDATE reservations 
+                SET status = 'cancelled', cancelled_at = ?
+                WHERE payment_id = ?
+            ''', (datetime.now().isoformat(), payment_id))
         
         conn.commit()
         
