@@ -2273,13 +2273,6 @@ def refund_policy():
     ''')
 
 
-@app.route('/test-auth')
-@require_admin_auth
-def test_auth():
-    """認証テスト用エンドポイント"""
-    return jsonify({'message': '認証成功！', 'user': request.authorization.username})
-
-
 @app.route('/admin')
 @require_admin_auth
 def admin():
