@@ -1464,7 +1464,7 @@ def index():
 
                 <div class="form-group">
                     <label>車両番号</label>
-                    <input type="text" id="car_number" placeholder="横浜 505 ゆ 62-72" required>
+                    <input type="text" id="car_number" placeholder="横浜 303 あ 19-27" required>
                 </div>
 
                 <div class="form-group">
