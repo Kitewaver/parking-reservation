@@ -388,10 +388,16 @@ def create_payment_intent():
         cursor = conn.cursor()
         
         # 既に予約が存在するかチェック
-        cursor.execute('''
-            SELECT * FROM reservations 
-            WHERE date = ? AND time_slot = ? AND status IN ('confirmed', 'pending')
-        ''', (date, time_slot))
+        if USE_POSTGRES:
+            cursor.execute('''
+                SELECT * FROM reservations 
+                WHERE date = %s AND time_slot = %s AND status IN ('confirmed', 'pending')
+            ''', (date, time_slot))
+        else:
+            cursor.execute('''
+                SELECT * FROM reservations 
+                WHERE date = ? AND time_slot = ? AND status IN ('confirmed', 'pending')
+            ''', (date, time_slot))
         
         if cursor.fetchone():
             conn.close()
@@ -401,21 +407,38 @@ def create_payment_intent():
         temp_reservation_id = f"temp_{int(datetime.now().timestamp() * 1000)}"
         
         try:
-            cursor.execute('''
-                INSERT INTO reservations 
-                (payment_id, car_number, customer_name, phone, email, date, time_slot, amount, status, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
-            ''', (
-                temp_reservation_id,
-                data.get('car_number'),
-                data.get('customer_name'),
-                data.get('phone'),
-                data.get('email'),
-                date,
-                time_slot,
-                calculate_price(time_slot),
-                datetime.now().isoformat()
-            ))
+            if USE_POSTGRES:
+                cursor.execute('''
+                    INSERT INTO reservations 
+                    (payment_id, car_number, customer_name, phone, email, date, time_slot, amount, status, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'pending', %s)
+                ''', (
+                    temp_reservation_id,
+                    data.get('car_number'),
+                    data.get('customer_name'),
+                    data.get('phone'),
+                    data.get('email'),
+                    date,
+                    time_slot,
+                    calculate_price(time_slot),
+                    datetime.now().isoformat()
+                ))
+            else:
+                cursor.execute('''
+                    INSERT INTO reservations 
+                    (payment_id, car_number, customer_name, phone, email, date, time_slot, amount, status, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+                ''', (
+                    temp_reservation_id,
+                    data.get('car_number'),
+                    data.get('customer_name'),
+                    data.get('phone'),
+                    data.get('email'),
+                    date,
+                    time_slot,
+                    calculate_price(time_slot),
+                    datetime.now().isoformat()
+                ))
             conn.commit()
         except sqlite3.IntegrityError:
             conn.close()
