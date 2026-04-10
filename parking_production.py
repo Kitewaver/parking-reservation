@@ -618,17 +618,78 @@ def stripe_webhook():
                     
                     if temp_reservation_id:
                         # 一時予約を本予約に更新
-                        cursor.execute('''
-                            UPDATE reservations 
-                            SET payment_id = ?, status = 'confirmed'
-                            WHERE payment_id = ? AND status = 'pending'
-                        ''', (payment_id, temp_reservation_id))
+                        if USE_POSTGRES:
+                            cursor.execute('''
+                                UPDATE reservations 
+                                SET payment_id = %s, status = 'confirmed'
+                                WHERE payment_id = %s AND status = 'pending'
+                            ''', (payment_id, temp_reservation_id))
+                        else:
+                            cursor.execute('''
+                                UPDATE reservations 
+                                SET payment_id = ?, status = 'confirmed'
+                                WHERE payment_id = ? AND status = 'pending'
+                            ''', (payment_id, temp_reservation_id))
                         
                         if cursor.rowcount > 0:
                             print(f"✅ 一時予約を本予約に更新: {payment_id}")
                         else:
                             print(f"⚠️  一時予約が見つかりません、新規作成します")
                             # フォールバック: 新規作成
+                            if USE_POSTGRES:
+                                cursor.execute('''
+                                    INSERT INTO reservations 
+                                    (payment_id, car_number, customer_name, phone, email, date, time_slot, amount, status, created_at)
+                                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                ''', (
+                                    payment_id,
+                                    metadata.get('car_number', ''),
+                                    metadata.get('customer_name', ''),
+                                    metadata.get('phone', ''),
+                                    metadata.get('email', ''),
+                                    metadata.get('date', ''),
+                                    metadata.get('time_slot', ''),
+                                    amount,
+                                    'confirmed',
+                                    datetime.now().isoformat()
+                                ))
+                            else:
+                                cursor.execute('''
+                                    INSERT INTO reservations 
+                                    (payment_id, car_number, customer_name, phone, email, date, time_slot, amount, status, created_at)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                ''', (
+                                    payment_id,
+                                    metadata.get('car_number', ''),
+                                    metadata.get('customer_name', ''),
+                                    metadata.get('phone', ''),
+                                    metadata.get('email', ''),
+                                    metadata.get('date', ''),
+                                    metadata.get('time_slot', ''),
+                                    amount,
+                                    'confirmed',
+                                    datetime.now().isoformat()
+                                ))
+                    else:
+                        # 旧バージョン対応: temp_reservation_idがない場合は新規作成
+                        if USE_POSTGRES:
+                            cursor.execute('''
+                                INSERT INTO reservations 
+                                (payment_id, car_number, customer_name, phone, email, date, time_slot, amount, status, created_at)
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            ''', (
+                                payment_id,
+                                metadata.get('car_number', ''),
+                                metadata.get('customer_name', ''),
+                                metadata.get('phone', ''),
+                                metadata.get('email', ''),
+                                metadata.get('date', ''),
+                                metadata.get('time_slot', ''),
+                                amount,
+                                'confirmed',
+                                datetime.now().isoformat()
+                            ))
+                        else:
                             cursor.execute('''
                                 INSERT INTO reservations 
                                 (payment_id, car_number, customer_name, phone, email, date, time_slot, amount, status, created_at)
@@ -645,24 +706,6 @@ def stripe_webhook():
                                 'confirmed',
                                 datetime.now().isoformat()
                             ))
-                    else:
-                        # 旧バージョン対応: temp_reservation_idがない場合は新規作成
-                        cursor.execute('''
-                            INSERT INTO reservations 
-                            (payment_id, car_number, customer_name, phone, email, date, time_slot, amount, status, created_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        ''', (
-                            payment_id,
-                            metadata.get('car_number', ''),
-                            metadata.get('customer_name', ''),
-                            metadata.get('phone', ''),
-                            metadata.get('email', ''),
-                            metadata.get('date', ''),
-                            metadata.get('time_slot', ''),
-                            amount,
-                            'confirmed',
-                            datetime.now().isoformat()
-                        ))
                     
                     conn.commit()
                     print(f"✅ 予約確定: {metadata.get('date')} {metadata.get('time_slot')}")
