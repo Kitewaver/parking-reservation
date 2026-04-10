@@ -11,6 +11,7 @@
 """
 
 from flask import Flask, request, jsonify, render_template_string, send_file
+from functools import wraps
 import stripe
 import json
 from datetime import datetime, timedelta
@@ -50,10 +51,27 @@ EMAIL_PASSWORD = os.environ.get('EMAIL_PASSWORD', 'your-app-password')
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 587
 
+# 管理画面認証
+ADMIN_USERNAME = os.environ.get('ADMIN_USERNAME', 'admin')
+ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'changeme')
+
 # データベースパス
 # Render環境では /tmp を使用（永続化しない一時データベース）
 # 本番では外部DBサービス（PostgreSQL等）を推奨
 DB_PATH = os.environ.get('DB_PATH', '/tmp/parking_system.db' if os.path.exists('/tmp') else 'parking_system.db')
+
+
+def require_admin_auth(f):
+    """管理画面用のBasic認証デコレーター"""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth = request.authorization
+        if not auth or not (auth.username == ADMIN_USERNAME and auth.password == ADMIN_PASSWORD):
+            return ('認証が必要です', 401, {
+                'WWW-Authenticate': 'Basic realm="Admin Area"'
+            })
+        return f(*args, **kwargs)
+    return decorated
 
 
 def get_db_connection():
@@ -768,20 +786,21 @@ def stripe_webhook():
                     
                     # 予約完了メール送信
                     if metadata.get('email'):
-                        send_reservation_email(
-                            to_email=metadata.get('email'),
-                            customer_name=metadata.get('customer_name', 'お客様'),
-                            reservation_data={
-                                'date': metadata.get('date'),
-                                'time_slot': metadata.get('time_slot'),
-                                'car_number': metadata.get('car_number'),
-                                'amount': amount,
-                                'payment_id': payment_id
-                            }
-                        )
+                        try:
+                            send_reservation_email(
+                                to_email=metadata.get('email'),
+                                customer_name=metadata.get('customer_name', 'お客様'),
+                                reservation_data={
+                                    'date': metadata.get('date'),
+                                    'time_slot': metadata.get('time_slot'),
+                                    'car_number': metadata.get('car_number'),
+                                    'amount': amount,
+                                    'payment_id': payment_id
+                                }
+                            )
+                        except Exception as email_error:
+                            print(f"⚠️  メール送信エラー（予約は完了）: {email_error}")
                     
-                except sqlite3.IntegrityError as e:
-                    print(f"⚠️  既に処理済みまたは二重予約: {payment_id}, {e}")
                 except Exception as e:
                     print(f"❌ DB保存エラー: {e}")
                     import traceback
