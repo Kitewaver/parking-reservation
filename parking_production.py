@@ -924,6 +924,24 @@ def add_closed_date():
         conn = get_db_connection()
         cursor = conn.cursor()
         
+        # 既に予約が入っていないかチェック
+        if USE_POSTGRES:
+            cursor.execute('''
+                SELECT COUNT(*) FROM reservations 
+                WHERE date = %s AND status = %s
+            ''', (date, 'confirmed'))
+        else:
+            cursor.execute('''
+                SELECT COUNT(*) FROM reservations 
+                WHERE date = ? AND status = ?
+            ''', (date, 'confirmed'))
+        
+        count = cursor.fetchone()[0]
+        if count > 0:
+            conn.close()
+            return jsonify({'error': f'この日には既に{count}件の予約が入っています'}), 400
+        
+        # 休業日を追加
         if USE_POSTGRES:
             cursor.execute('''
                 INSERT INTO closed_dates (date, reason, created_at)
@@ -1253,7 +1271,7 @@ def landing():
             <div>
                 <h4 style="margin-bottom: 15px;">所在地</h4>
                 <p style="font-size: 18px; margin-bottom: 20px;">
-                    〒230-0002<br>
+                    〒230-0025<br>
                     神奈川県横浜市鶴見区<br>
                     市場大和町4-9
                 </p>
@@ -1297,7 +1315,7 @@ def landing():
         </div>
         <p style="margin-top: 20px;">
             運営: 有限会社滝沢商店<br>
-            〒230-0002 神奈川県横浜市鶴見区市場大和町4-9<br>
+            〒230-0025 神奈川県横浜市鶴見区市場大和町4-9<br>
             Email: noboru.takizawa@blueflag-sys.com
         </p>
         <p style="margin-top: 20px; color: #95a5a6;">
@@ -1884,7 +1902,7 @@ def terms():
     <h2>第7条（連絡先）</h2>
     <p>
         有限会社滝沢商店<br>
-        〒230-0002 神奈川県横浜市鶴見区市場大和町4-9<br>
+        〒230-0025 神奈川県横浜市鶴見区市場大和町4-9<br>
         Email: noboru.takizawa@blueflag-sys.com
     </p>
 </body>
@@ -1994,7 +2012,7 @@ def legal():
         </tr>
         <tr>
             <th>所在地</th>
-            <td>〒230-0002 神奈川県横浜市鶴見区市場大和町4-9</td>
+            <td>〒230-0025 神奈川県横浜市鶴見区市場大和町4-9</td>
         </tr>
         <tr>
             <th>電話番号</th>
