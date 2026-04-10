@@ -128,6 +128,10 @@ def cleanup_old_pending_reservations():
 def send_reservation_email(to_email, customer_name, reservation_data):
     """予約完了メール送信"""
     try:
+        print(f"📧 メール送信開始: {to_email}")
+        print(f"   送信元: {EMAIL_SENDER}")
+        print(f"   SMTPサーバー: {SMTP_SERVER}:{SMTP_PORT}")
+        
         msg = MIMEMultipart('alternative')
         msg['Subject'] = '【予約完了】シャルマン鶴見市場 No.1 駐車場'
         msg['From'] = EMAIL_SENDER
@@ -176,10 +180,16 @@ def send_reservation_email(to_email, customer_name, reservation_data):
         part = MIMEText(html, 'html')
         msg.attach(part)
         
+        print(f"   メール本文作成完了")
+        
         # SMTP送信
+        print(f"   SMTP接続開始...")
         with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+            print(f"   TLS開始...")
             server.starttls()
+            print(f"   ログイン試行...")
             server.login(EMAIL_SENDER, EMAIL_PASSWORD)
+            print(f"   メール送信中...")
             server.send_message(msg)
         
         print(f"📧 予約完了メール送信成功: {to_email}")
@@ -187,6 +197,9 @@ def send_reservation_email(to_email, customer_name, reservation_data):
         
     except Exception as e:
         print(f"❌ メール送信エラー: {e}")
+        print(f"   エラータイプ: {type(e).__name__}")
+        import traceback
+        traceback.print_exc()
         return False
 
 
