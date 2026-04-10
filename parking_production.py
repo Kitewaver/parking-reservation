@@ -19,8 +19,12 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import os
+from zoneinfo import ZoneInfo
 
 app = Flask(__name__)
+
+# 日本時間のタイムゾーン
+JST = ZoneInfo("Asia/Tokyo")
 
 # データベース設定
 DATABASE_URL = os.environ.get('DATABASE_URL')
@@ -46,10 +50,9 @@ EMAIL_PASSWORD = os.environ.get('EMAIL_PASSWORD', 'your-app-password')
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 587
 
-
 # データベースパス
-# 本番では外部DBサービス（PostgreSQL等）を推奨
 # Render環境では /tmp を使用（永続化しない一時データベース）
+# 本番では外部DBサービス（PostgreSQL等）を推奨
 DB_PATH = os.environ.get('DB_PATH', '/tmp/parking_system.db' if os.path.exists('/tmp') else 'parking_system.db')
 
 
@@ -289,7 +292,7 @@ def calculate_price(time_slot):
 
 def is_cancellable(reservation_date, time_slot):
     """キャンセル可能かチェック（入庫2時間前まで）"""
-    now = datetime.now()
+    now = datetime.now(JST)  # 日本時間で取得
     
     # 入庫時刻を計算
     res_datetime = datetime.fromisoformat(reservation_date)
@@ -313,7 +316,7 @@ def check_availability():
         time_slot = data.get('time_slot')
         
         # 当日の場合、時間帯が過ぎていないかチェック
-        now = datetime.now()
+        now = datetime.now(JST)  # 日本時間で取得
         selected_date = datetime.fromisoformat(date)
         
         if selected_date.date() == now.date():
@@ -657,7 +660,6 @@ def stripe_webhook():
                 except sqlite3.IntegrityError as e:
                     print(f"⚠️  既に処理済みまたは二重予約: {payment_id}, {e}")
                 except Exception as e:
-
                     print(f"❌ DB保存エラー: {e}")
                     import traceback
                     traceback.print_exc()
@@ -914,7 +916,7 @@ def add_closed_date():
         
         # 2ヶ月先までチェック
         target_date = datetime.fromisoformat(date)
-        max_date = datetime.now() + timedelta(days=60)
+        max_date = datetime.now(JST) + timedelta(days=60)
         
         if target_date > max_date:
             return jsonify({'error': '2ヶ月先までしか設定できません'}), 400
@@ -1077,7 +1079,6 @@ def landing():
             align-items: start;
         }
         .map-container {
-
             width: 100%;
             height: 400px;
             border-radius: 10px;
@@ -1259,7 +1260,7 @@ def landing():
             </div>
             <div class="map-container">
                 <iframe 
-                    src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3247.4781255889693!2d139.6843947735998!3d35.51718053897196!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x60185fcae10377b3%3A0x28c708976222e79d!2z44K344Oj44Or44Oe44Oz6ba06KaL5biC5aC0!5e0!3m2!1sja!2sjp!4v1775621450603!5m2!1sja!2sjp" width="600" height="450" style="border:0;" allowfullscreen="" loading="lazy" referrerpolicy="no-referrer-when-downgrade"
+                    src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3247.4781255889693!2d139.6843947735998!3d35.51718053897196!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x60185fcae10377b3%3A0x28c708976222e79d!2z44K344Oj44Or44Oe44Oz6ba06KaL5biC5aC0!5e0!3m2!1sja!2sjp!4v1775621450603!5m2!1sja!2sjp"
                     width="100%" 
                     height="100%" 
                     style="border:0;" 
@@ -1463,7 +1464,7 @@ def index():
 
                 <div class="form-group">
                     <label>車両番号</label>
-                    <input type="text" id="car_number" placeholder="横浜 303 あ　1100" required>
+                    <input type="text" id="car_number" placeholder="横浜 505 ゆ 62-72" required>
                 </div>
 
                 <div class="form-group">
@@ -1989,7 +1990,7 @@ def legal():
         </tr>
         <tr>
             <th>電話番号</th>
-            <td>090-6137-9489</td>
+            <td>090-6137-1111</td>
         </tr>
         <tr>
             <th>メールアドレス</th>
@@ -2079,7 +2080,7 @@ def refund_policy():
     <p>
         返金に関するお問い合わせ：<br>
         Email: noboru.takizawa@blueflag-sys.com<br>
-        電話: 090-6137-1111
+        電話: 090-6137-9489
     </p>
 </body>
 </html>
@@ -2279,7 +2280,6 @@ if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
 else:
     # Gunicorn経由で起動する場合（本番環境）
-
     print(f"🔗 データベース: {'PostgreSQL' if USE_POSTGRES else 'SQLite'}")
     try:
         init_database()  # 自動初期化
