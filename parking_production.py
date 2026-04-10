@@ -915,8 +915,8 @@ def add_closed_date():
         reason = data.get('reason', '休業日')
         
         # 2ヶ月先までチェック
-        target_date = datetime.fromisoformat(date)
-        max_date = datetime.now(JST) + timedelta(days=60)
+        target_date = datetime.fromisoformat(date).date()
+        max_date = (datetime.now() + timedelta(days=60)).date()
         
         if target_date > max_date:
             return jsonify({'error': '2ヶ月先までしか設定できません'}), 400
@@ -924,18 +924,22 @@ def add_closed_date():
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        cursor.execute('''
-            INSERT INTO closed_dates (date, reason, created_at)
-            VALUES (?, ?, ?)
-        ''', (date, reason, datetime.now().isoformat()))
+        if USE_POSTGRES:
+            cursor.execute('''
+                INSERT INTO closed_dates (date, reason, created_at)
+                VALUES (%s, %s, %s)
+            ''', (date, reason, datetime.now().isoformat()))
+        else:
+            cursor.execute('''
+                INSERT INTO closed_dates (date, reason, created_at)
+                VALUES (?, ?, ?)
+            ''', (date, reason, datetime.now().isoformat()))
         
         conn.commit()
         conn.close()
         
         return jsonify({'success': True})
         
-    except sqlite3.IntegrityError:
-        return jsonify({'error': '既に登録されています'}), 400
     except Exception as e:
         return jsonify({'error': str(e)}), 400
 
@@ -946,7 +950,11 @@ def delete_closed_date(id):
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    cursor.execute('DELETE FROM closed_dates WHERE id = ?', (id,))
+    if USE_POSTGRES:
+        cursor.execute('DELETE FROM closed_dates WHERE id = %s', (id,))
+    else:
+        cursor.execute('DELETE FROM closed_dates WHERE id = ?', (id,))
+    
     conn.commit()
     conn.close()
     
