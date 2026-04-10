@@ -889,6 +889,7 @@ def stripe_webhook():
 
 
 @app.route('/api/reservations', methods=['GET'])
+@require_admin_auth
 def get_reservations():
     """予約一覧取得"""
     conn = get_db_connection()
@@ -1041,6 +1042,7 @@ def cancel_reservation():
 
 
 @app.route('/api/closed-dates', methods=['GET'])
+@require_admin_auth
 def get_closed_dates():
     """休業日一覧取得"""
     conn = get_db_connection()
@@ -1063,6 +1065,7 @@ def get_closed_dates():
 
 
 @app.route('/api/closed-dates', methods=['POST'])
+@require_admin_auth
 def add_closed_date():
     """休業日追加"""
     try:
@@ -1119,6 +1122,7 @@ def add_closed_date():
 
 
 @app.route('/api/closed-dates/<int:id>', methods=['DELETE'])
+@require_admin_auth
 def delete_closed_date(id):
     """休業日削除"""
     conn = get_db_connection()
@@ -2269,7 +2273,15 @@ def refund_policy():
     ''')
 
 
+@app.route('/test-auth')
+@require_admin_auth
+def test_auth():
+    """認証テスト用エンドポイント"""
+    return jsonify({'message': '認証成功！', 'user': request.authorization.username})
+
+
 @app.route('/admin')
+@require_admin_auth
 def admin():
     """管理画面"""
     return render_template_string('''
