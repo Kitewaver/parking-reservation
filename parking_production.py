@@ -524,7 +524,11 @@ def stripe_webhook():
             conn = get_db_connection()
             cursor = conn.cursor()
             
-            cursor.execute('SELECT event_id FROM webhook_events WHERE event_id = ?', (event_id,))
+            if USE_POSTGRES:
+                cursor.execute('SELECT event_id FROM webhook_events WHERE event_id = %s', (event_id,))
+            else:
+                cursor.execute('SELECT event_id FROM webhook_events WHERE event_id = ?', (event_id,))
+            
             if cursor.fetchone():
                 conn.close()
                 print(f"⚠️  既に処理済みのイベント: {event_id}")
@@ -532,15 +536,21 @@ def stripe_webhook():
             
             # イベントを記録（処理前）
             try:
-                cursor.execute('''
-                    INSERT INTO webhook_events (event_id, event_type, payment_id, processed_at)
-                    VALUES (?, ?, ?, ?)
-                ''', (event_id, event_type, 'processing', datetime.now().isoformat()))
+                if USE_POSTGRES:
+                    cursor.execute('''
+                        INSERT INTO webhook_events (event_id, event_type, payment_id, processed_at)
+                        VALUES (%s, %s, %s, %s)
+                    ''', (event_id, event_type, 'processing', datetime.now().isoformat()))
+                else:
+                    cursor.execute('''
+                        INSERT INTO webhook_events (event_id, event_type, payment_id, processed_at)
+                        VALUES (?, ?, ?, ?)
+                    ''', (event_id, event_type, 'processing', datetime.now().isoformat()))
                 conn.commit()
-            except sqlite3.IntegrityError:
-                # 別のリクエストが同時に処理中
+            except Exception as e:
+                # 別のリクエストが同時に処理中、またはIntegrityError
                 conn.close()
-                print(f"⚠️  同時処理検出: {event_id}")
+                print(f"⚠️  同時処理検出またはDB制約エラー: {event_id}, {e}")
                 return jsonify({'status': 'success', 'message': 'Concurrent processing detected'}), 200
             
             conn.close()
@@ -659,11 +669,18 @@ def stripe_webhook():
                     
                     # Webhookイベントにpayment_idを記録（event_idがある場合のみ）
                     if event_id:
-                        cursor.execute('''
-                            UPDATE webhook_events 
-                            SET payment_id = ?
-                            WHERE event_id = ?
-                        ''', (payment_id, event_id))
+                        if USE_POSTGRES:
+                            cursor.execute('''
+                                UPDATE webhook_events 
+                                SET payment_id = %s
+                                WHERE event_id = %s
+                            ''', (payment_id, event_id))
+                        else:
+                            cursor.execute('''
+                                UPDATE webhook_events 
+                                SET payment_id = ?
+                                WHERE event_id = ?
+                            ''', (payment_id, event_id))
                         conn.commit()
                     
                     # 予約完了メール送信
@@ -703,11 +720,18 @@ def stripe_webhook():
                 cursor = conn.cursor()
                 
                 # 予約ステータスを refunded に更新
-                cursor.execute('''
-                    UPDATE reservations 
-                    SET status = 'refunded'
-                    WHERE payment_id = ?
-                ''', (payment_id,))
+                if USE_POSTGRES:
+                    cursor.execute('''
+                        UPDATE reservations 
+                        SET status = 'refunded'
+                        WHERE payment_id = %s
+                    ''', (payment_id,))
+                else:
+                    cursor.execute('''
+                        UPDATE reservations 
+                        SET status = 'refunded'
+                        WHERE payment_id = ?
+                    ''', (payment_id,))
                 
                 affected = cursor.rowcount
                 conn.commit()
