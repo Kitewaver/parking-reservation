@@ -336,16 +336,26 @@ def check_availability():
         cursor = conn.cursor()
         
         # 休業日チェック
-        cursor.execute('SELECT * FROM closed_dates WHERE date = ?', (date,))
+        if USE_POSTGRES:
+            cursor.execute('SELECT * FROM closed_dates WHERE date = %s', (date,))
+        else:
+            cursor.execute('SELECT * FROM closed_dates WHERE date = ?', (date,))
+        
         if cursor.fetchone():
             conn.close()
             return jsonify({'available': False, 'reason': 'closed'})
         
         # 予約済みチェック
-        cursor.execute('''
-            SELECT * FROM reservations 
-            WHERE date = ? AND time_slot = ? AND status = 'confirmed'
-        ''', (date, time_slot))
+        if USE_POSTGRES:
+            cursor.execute('''
+                SELECT * FROM reservations 
+                WHERE date = %s AND time_slot = %s AND status = %s
+            ''', (date, time_slot, 'confirmed'))
+        else:
+            cursor.execute('''
+                SELECT * FROM reservations 
+                WHERE date = ? AND time_slot = ? AND status = 'confirmed'
+            ''', (date, time_slot))
         
         if cursor.fetchone():
             conn.close()
@@ -777,12 +787,21 @@ def cancel_reservation():
         cursor = conn.cursor()
         
         # 予約情報取得
-        cursor.execute('SELECT * FROM reservations WHERE payment_id = ? AND status = "confirmed"', (payment_id,))
+        cursor.execute('SELECT * FROM reservations WHERE payment_id = %s AND status = %s', (payment_id, 'confirmed'))
         row = cursor.fetchone()
         
         if not row:
             conn.close()
             print(f"❌ 予約が見つかりません: {payment_id}")
+            print(f"   データベース確認:")
+            # デバッグ: すべての予約を表示
+            conn2 = get_db_connection()
+            cursor2 = conn2.cursor()
+            cursor2.execute('SELECT payment_id, status FROM reservations LIMIT 10')
+            all_rows = cursor2.fetchall()
+            for r in all_rows:
+                print(f"   - payment_id: {r[0] if USE_POSTGRES else r[0]}, status: {r[1] if USE_POSTGRES else r[1]}")
+            conn2.close()
             return jsonify({'error': '予約が見つかりません'}), 404
         
         reservation_date = row[6]
@@ -1058,7 +1077,7 @@ def landing():
             align-items: start;
         }
         .map-container {
-    <script>
+
             width: 100%;
             height: 400px;
             border-radius: 10px;
@@ -2260,7 +2279,7 @@ if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
 else:
     # Gunicorn経由で起動する場合（本番環境）
-    # PostgreSQLのテーブルは手動で作成済み
+
     print(f"🔗 データベース: {'PostgreSQL' if USE_POSTGRES else 'SQLite'}")
     try:
         init_database()  # 自動初期化
