@@ -73,6 +73,40 @@ def get_db_connection():
         return conn
 
 
+def cleanup_old_pending_reservations():
+    """24時間以上経過したpending予約を削除"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # 24時間前の時刻
+        cutoff_time = (datetime.now() - timedelta(hours=24)).isoformat()
+        
+        if USE_POSTGRES:
+            cursor.execute('''
+                DELETE FROM reservations 
+                WHERE status = %s AND created_at < %s
+            ''', ('pending', cutoff_time))
+        else:
+            cursor.execute('''
+                DELETE FROM reservations 
+                WHERE status = ? AND created_at < ?
+            ''', ('pending', cutoff_time))
+        
+        deleted_count = cursor.rowcount
+        conn.commit()
+        conn.close()
+        
+        if deleted_count > 0:
+            print(f"🧹 古いpending予約を{deleted_count}件削除しました")
+        
+        return deleted_count
+        
+    except Exception as e:
+        print(f"⚠️ クリーンアップエラー: {e}")
+        return 0
+
+
 def send_reservation_email(to_email, customer_name, reservation_data):
     """予約完了メール送信"""
     try:
@@ -509,6 +543,9 @@ def stripe_webhook():
     
     try:
         print(f"\n📨 Webhook: {event_type}")
+        
+        # 古いpending予約をクリーンアップ（定期的に実行）
+        cleanup_old_pending_reservations()
         
         # イベントIDを取得（二重処理防止）
         try:
@@ -2400,6 +2437,10 @@ else:
     try:
         init_database()  # 自動初期化
         print("✅ データベース準備完了")
+        
+        # 古いpending予約をクリーンアップ
+        cleanup_old_pending_reservations()
+        
     except Exception as e:
         print(f"⚠️  データベース初期化エラー（既存テーブルの可能性）: {e}")
         # エラーでもサーバーは起動する
