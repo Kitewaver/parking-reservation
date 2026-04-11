@@ -51,6 +51,7 @@ EMAIL_SENDER = os.environ.get('EMAIL_SENDER', 'your-email@gmail.com')
 # EmailJS設定（Render対応）
 EMAILJS_SERVICE_ID = os.environ.get('EMAILJS_SERVICE_ID', 'service_sy9y2dl')
 EMAILJS_TEMPLATE_ID = os.environ.get('EMAILJS_TEMPLATE_ID', 'template_oh0iha7')
+EMAILJS_CANCEL_TEMPLATE_ID = os.environ.get('EMAILJS_CANCEL_TEMPLATE_ID', 'template_g0jcbbq')
 EMAILJS_PUBLIC_KEY = os.environ.get('EMAILJS_PUBLIC_KEY')
 EMAILJS_PRIVATE_KEY = os.environ.get('EMAILJS_PRIVATE_KEY')  # Private Key追加
 
@@ -271,53 +272,111 @@ def send_reservation_email(to_email, customer_name, reservation_data):
 def send_cancellation_email(to_email, customer_name, reservation_data, refund_amount, fee):
     """キャンセル確認メール送信"""
     try:
-        msg = MIMEMultipart('alternative')
-        msg['Subject'] = '【キャンセル完了】シャルマン鶴見市場 No.1 駐車場'
-        msg['From'] = EMAIL_SENDER
-        msg['To'] = to_email
+        print(f"📧 キャンセルメール送信開始: {to_email}")
         
-        html = f"""
-        <html>
-        <body style="font-family: sans-serif;">
-            <h2>予約キャンセルが完了しました</h2>
-            <p>{customer_name} 様</p>
-            <p>以下の予約をキャンセルいたしました。</p>
+        if USE_EMAILJS:
+            # EmailJS使用
+            import requests
             
-            <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
-                <h3>キャンセル内容</h3>
-                <table style="width: 100%;">
-                    <tr><td><strong>ご利用日:</strong></td><td>{reservation_data['date']}</td></tr>
-                    <tr><td><strong>時間帯:</strong></td><td>{'0-12時' if reservation_data['time_slot'] == 'morning' else '12-24時'}</td></tr>
-                    <tr><td><strong>返金額:</strong></td><td>¥{refund_amount:,}</td></tr>
-                    <tr><td><strong>キャンセル手数料:</strong></td><td>¥{fee}</td></tr>
-                </table>
-            </div>
+            # 元の料金を計算
+            original_amount = refund_amount + fee
             
-            <p>返金は3-5営業日以内にお客様のカードに処理されます。</p>
-            <p>またのご利用をお待ちしております。</p>
+            # EmailJSのパラメータ
+            template_params = {
+                'to_email': to_email,
+                'customer_name': customer_name,
+                'date': reservation_data['date'],
+                'time_slot': '0-12時' if reservation_data['time_slot'] == 'morning' else '12-24時',
+                'car_number': reservation_data.get('car_number', ''),
+                'original_amount': f"¥{original_amount:,}",
+                'fee': f"{fee:,}",
+                'refund_amount': f"{refund_amount:,}"
+            }
             
-            <hr>
-            <p style="color: #666; font-size: 12px;">
-                シャルマン鶴見市場 No.1<br>
-                神奈川県横浜市鶴見区市場大和町4-9
-            </p>
-        </body>
-        </html>
-        """
+            # Private Key優先、なければPublic Key
+            if EMAILJS_PRIVATE_KEY:
+                data = {
+                    'service_id': EMAILJS_SERVICE_ID,
+                    'template_id': EMAILJS_CANCEL_TEMPLATE_ID,
+                    'user_id': EMAILJS_PUBLIC_KEY,
+                    'accessToken': EMAILJS_PRIVATE_KEY,
+                    'template_params': template_params
+                }
+                print(f"   EmailJS API送信中（Private Key使用）...")
+            else:
+                data = {
+                    'service_id': EMAILJS_SERVICE_ID,
+                    'template_id': EMAILJS_CANCEL_TEMPLATE_ID,
+                    'user_id': EMAILJS_PUBLIC_KEY,
+                    'template_params': template_params
+                }
+                print(f"   EmailJS API送信中（Public Key使用）...")
+            
+            response = requests.post(
+                'https://api.emailjs.com/api/v1.0/email/send',
+                headers={'Content-Type': 'application/json'},
+                json=data
+            )
+            
+            if response.status_code == 200:
+                print(f"📧 キャンセルメール送信成功: {to_email}")
+                return True
+            else:
+                print(f"❌ EmailJSエラー: {response.status_code} - {response.text}")
+                return False
         
-        part = MIMEText(html, 'html')
-        msg.attach(part)
-        
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-            server.starttls()
-            server.login(EMAIL_SENDER, EMAIL_PASSWORD)
-            server.send_message(msg)
-        
-        print(f"📧 キャンセルメール送信成功: {to_email}")
-        return True
+        else:
+            # Gmail SMTP使用
+            msg = MIMEMultipart('alternative')
+            msg['Subject'] = '【キャンセル完了】シャルマン鶴見市場 No.1 駐車場'
+            msg['From'] = EMAIL_SENDER
+            msg['To'] = to_email
+            
+            html = f"""
+            <html>
+            <body style="font-family: sans-serif;">
+                <h2>予約キャンセルが完了しました</h2>
+                <p>{customer_name} 様</p>
+                <p>以下の予約をキャンセルいたしました。</p>
+                
+                <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                    <h3>キャンセル内容</h3>
+                    <table style="width: 100%;">
+                        <tr><td><strong>ご利用日:</strong></td><td>{reservation_data['date']}</td></tr>
+                        <tr><td><strong>時間帯:</strong></td><td>{'0-12時' if reservation_data['time_slot'] == 'morning' else '12-24時'}</td></tr>
+                        <tr><td><strong>返金額:</strong></td><td>¥{refund_amount:,}</td></tr>
+                        <tr><td><strong>キャンセル手数料:</strong></td><td>¥{fee}</td></tr>
+                    </table>
+                </div>
+                
+                <p>返金は3-5営業日以内にお客様のカードに処理されます。</p>
+                <p>またのご利用をお待ちしております。</p>
+                
+                <hr>
+                <p style="color: #666; font-size: 12px;">
+                    シャルマン鶴見市場 No.1<br>
+                    〒230-0025 神奈川県横浜市鶴見区市場大和町4-9<br>
+                    電話: 090-6137-9489
+                </p>
+            </body>
+            </html>
+            """
+            
+            part = MIMEText(html, 'html')
+            msg.attach(part)
+            
+            with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+                server.starttls()
+                server.login(EMAIL_SENDER, EMAIL_PASSWORD)
+                server.send_message(msg)
+            
+            print(f"📧 キャンセルメール送信成功: {to_email}")
+            return True
         
     except Exception as e:
-        print(f"❌ メール送信エラー: {e}")
+        print(f"❌ キャンセルメール送信エラー: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 
