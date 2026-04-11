@@ -52,8 +52,9 @@ EMAIL_SENDER = os.environ.get('EMAIL_SENDER', 'your-email@gmail.com')
 EMAILJS_SERVICE_ID = os.environ.get('EMAILJS_SERVICE_ID', 'service_sy9y2dl')
 EMAILJS_TEMPLATE_ID = os.environ.get('EMAILJS_TEMPLATE_ID', 'template_oh0iha7')
 EMAILJS_PUBLIC_KEY = os.environ.get('EMAILJS_PUBLIC_KEY')
+EMAILJS_PRIVATE_KEY = os.environ.get('EMAILJS_PRIVATE_KEY')  # Private Key追加
 
-if EMAILJS_PUBLIC_KEY:
+if EMAILJS_PUBLIC_KEY or EMAILJS_PRIVATE_KEY:
     USE_EMAILJS = True
     print("📧 メール送信: EmailJS")
 else:
@@ -159,14 +160,27 @@ def send_reservation_email(to_email, customer_name, reservation_data):
                 'cancel_url': 'https://parking-reservation-rzck.onrender.com/cancel'
             }
             
-            data = {
-                'service_id': EMAILJS_SERVICE_ID,
-                'template_id': EMAILJS_TEMPLATE_ID,
-                'user_id': EMAILJS_PUBLIC_KEY,
-                'template_params': template_params
-            }
+            # Private Key優先、なければPublic Key
+            if EMAILJS_PRIVATE_KEY:
+                # Private Key使用（サーバー用）
+                data = {
+                    'service_id': EMAILJS_SERVICE_ID,
+                    'template_id': EMAILJS_TEMPLATE_ID,
+                    'user_id': EMAILJS_PUBLIC_KEY,
+                    'accessToken': EMAILJS_PRIVATE_KEY,
+                    'template_params': template_params
+                }
+                print(f"   EmailJS API送信中（Private Key使用）...")
+            else:
+                # Public Key使用（ブラウザ用）
+                data = {
+                    'service_id': EMAILJS_SERVICE_ID,
+                    'template_id': EMAILJS_TEMPLATE_ID,
+                    'user_id': EMAILJS_PUBLIC_KEY,
+                    'template_params': template_params
+                }
+                print(f"   EmailJS API送信中（Public Key使用）...")
             
-            print(f"   EmailJS API送信中...")
             response = requests.post(
                 'https://api.emailjs.com/api/v1.0/email/send',
                 headers={'Content-Type': 'application/json'},
