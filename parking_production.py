@@ -45,11 +45,23 @@ STRIPE_PUBLIC_KEY = os.environ.get('STRIPE_PUBLIC_KEY', 'pk_test_51T0HAtR79rW14G
 # Webhookシークレット（Stripeダッシュボードから取得）
 WEBHOOK_SECRET = os.environ.get('WEBHOOK_SECRET', 'whsec_YOUR_WEBHOOK_SECRET')
 
-# メール設定（Gmail SMTP）
+# メール設定
 EMAIL_SENDER = os.environ.get('EMAIL_SENDER', 'your-email@gmail.com')
-EMAIL_PASSWORD = os.environ.get('EMAIL_PASSWORD', 'your-app-password')
-SMTP_SERVER = "smtp.gmail.com"
-SMTP_PORT = 587
+
+# EmailJS設定（Render対応）
+EMAILJS_SERVICE_ID = os.environ.get('EMAILJS_SERVICE_ID', 'service_sy9y2dl')
+EMAILJS_TEMPLATE_ID = os.environ.get('EMAILJS_TEMPLATE_ID', 'template_oh0iha7')
+EMAILJS_PUBLIC_KEY = os.environ.get('EMAILJS_PUBLIC_KEY')
+
+if EMAILJS_PUBLIC_KEY:
+    USE_EMAILJS = True
+    print("📧 メール送信: EmailJS")
+else:
+    USE_EMAILJS = False
+    EMAIL_PASSWORD = os.environ.get('EMAIL_PASSWORD', 'your-app-password')
+    SMTP_SERVER = "smtp.gmail.com"
+    SMTP_PORT = 587
+    print("📧 メール送信: Gmail SMTP")
 
 # 管理画面認証
 ADMIN_USERNAME = os.environ.get('ADMIN_USERNAME', 'admin')
@@ -130,70 +142,109 @@ def send_reservation_email(to_email, customer_name, reservation_data):
     try:
         print(f"📧 メール送信開始: {to_email}")
         print(f"   送信元: {EMAIL_SENDER}")
-        print(f"   SMTPサーバー: {SMTP_SERVER}:{SMTP_PORT}")
         
-        msg = MIMEMultipart('alternative')
-        msg['Subject'] = '【予約完了】シャルマン鶴見市場 No.1 駐車場'
-        msg['From'] = EMAIL_SENDER
-        msg['To'] = to_email
-        
-        # メール本文（HTML）
-        html = f"""
-        <html>
-        <body style="font-family: sans-serif;">
-            <h2>駐車場予約が完了しました</h2>
-            <p>{customer_name} 様</p>
-            <p>ご予約ありがとうございます。以下の内容で予約を承りました。</p>
+        if USE_EMAILJS:
+            # EmailJS使用
+            import requests
             
-            <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
-                <h3>予約内容</h3>
-                <table style="width: 100%;">
-                    <tr><td><strong>ご利用日:</strong></td><td>{reservation_data['date']}</td></tr>
-                    <tr><td><strong>時間帯:</strong></td><td>{'0-12時' if reservation_data['time_slot'] == 'morning' else '12-24時'}</td></tr>
-                    <tr><td><strong>車両番号:</strong></td><td>{reservation_data['car_number']}</td></tr>
-                    <tr><td><strong>料金:</strong></td><td>¥{reservation_data['amount']:,}</td></tr>
-                    <tr><td><strong>決済ID:</strong></td><td>{reservation_data['payment_id']}</td></tr>
-                </table>
-            </div>
+            # EmailJSのパラメータ
+            template_params = {
+                'to_email': to_email,
+                'customer_name': customer_name,
+                'date': reservation_data['date'],
+                'time_slot': '0-12時' if reservation_data['time_slot'] == 'morning' else '12-24時',
+                'car_number': reservation_data['car_number'],
+                'amount': f"¥{reservation_data['amount']:,}",
+                'payment_id': reservation_data['payment_id'],
+                'cancel_url': 'https://parking-reservation-rzck.onrender.com/cancel'
+            }
             
-            <div style="background: #fff3cd; padding: 15px; border-radius: 8px; margin: 20px 0;">
-                <h3>⚠️ キャンセルポリシー</h3>
-                <ul>
-                    <li>入庫2時間前まで: キャンセル可能（手数料¥100）</li>
-                    <li>2時間を切った場合: キャンセル不可・全額収納</li>
-                </ul>
-                <p>キャンセルはこちら: <a href="https://parking-reservation-rzck.onrender.com/cancel">キャンセルページ</a></p>
-            </div>
+            data = {
+                'service_id': EMAILJS_SERVICE_ID,
+                'template_id': EMAILJS_TEMPLATE_ID,
+                'user_id': EMAILJS_PUBLIC_KEY,
+                'template_params': template_params
+            }
             
-            <p>ご不明な点がございましたら、お気軽にお問い合わせください。</p>
-            <p>当日のご利用をお待ちしております。</p>
+            print(f"   EmailJS API送信中...")
+            response = requests.post(
+                'https://api.emailjs.com/api/v1.0/email/send',
+                headers={'Content-Type': 'application/json'},
+                json=data
+            )
             
-            <hr>
-            <p style="color: #666; font-size: 12px;">
-                シャルマン鶴見市場 No.1<br>
-                神奈川県横浜市鶴見区市場大和町4-9
-            </p>
-        </body>
-        </html>
-        """
+            if response.status_code == 200:
+                print(f"📧 予約完了メール送信成功: {to_email}")
+                return True
+            else:
+                print(f"❌ EmailJSエラー: {response.status_code} - {response.text}")
+                return False
         
-        part = MIMEText(html, 'html')
-        msg.attach(part)
-        
-        print(f"   メール本文作成完了")
-        
-        # SMTP送信
-        print(f"   SMTP接続開始...")
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-            print(f"   TLS開始...")
-            server.starttls()
-            print(f"   ログイン試行...")
-            server.login(EMAIL_SENDER, EMAIL_PASSWORD)
-            print(f"   メール送信中...")
-            server.send_message(msg)
-        
-        print(f"📧 予約完了メール送信成功: {to_email}")
-        return True
+        else:
+            # Gmail SMTP使用
+            print(f"   SMTPサーバー: {SMTP_SERVER}:{SMTP_PORT}")
+            
+            msg = MIMEMultipart('alternative')
+            msg['Subject'] = '【予約完了】シャルマン鶴見市場 No.1 駐車場'
+            msg['From'] = EMAIL_SENDER
+            msg['To'] = to_email
+            
+            html = f"""
+            <html>
+            <body style="font-family: sans-serif;">
+                <h2>駐車場予約が完了しました</h2>
+                <p>{customer_name} 様</p>
+                <p>ご予約ありがとうございます。以下の内容で予約を承りました。</p>
+                
+                <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                    <h3>予約内容</h3>
+                    <table style="width: 100%;">
+                        <tr><td><strong>ご利用日:</strong></td><td>{reservation_data['date']}</td></tr>
+                        <tr><td><strong>時間帯:</strong></td><td>{'0-12時' if reservation_data['time_slot'] == 'morning' else '12-24時'}</td></tr>
+                        <tr><td><strong>車両番号:</strong></td><td>{reservation_data['car_number']}</td></tr>
+                        <tr><td><strong>料金:</strong></td><td>¥{reservation_data['amount']:,}</td></tr>
+                        <tr><td><strong>決済ID:</strong></td><td>{reservation_data['payment_id']}</td></tr>
+                    </table>
+                </div>
+                
+                <div style="background: #fff3cd; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                    <h3>⚠️ キャンセルポリシー</h3>
+                    <ul>
+                        <li>入庫2時間前まで: キャンセル可能（手数料¥100）</li>
+                        <li>2時間を切った場合: キャンセル不可・全額収納</li>
+                    </ul>
+                    <p>キャンセルはこちら: <a href="https://parking-reservation-rzck.onrender.com/cancel">キャンセルページ</a></p>
+                </div>
+                
+                <p>ご不明な点がございましたら、お気軽にお問い合わせください。</p>
+                <p>当日のご利用をお待ちしております。</p>
+                
+                <hr>
+                <p style="color: #666; font-size: 12px;">
+                    シャルマン鶴見市場 No.1<br>
+                    〒230-0025 神奈川県横浜市鶴見区市場大和町4-9<br>
+                    電話: 090-6137-9489
+                </p>
+            </body>
+            </html>
+            """
+            
+            part = MIMEText(html, 'html')
+            msg.attach(part)
+            
+            print(f"   メール本文作成完了")
+            print(f"   SMTP接続開始...")
+            
+            with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+                print(f"   TLS開始...")
+                server.starttls()
+                print(f"   ログイン試行...")
+                server.login(EMAIL_SENDER, EMAIL_PASSWORD)
+                print(f"   メール送信中...")
+                server.send_message(msg)
+            
+            print(f"📧 予約完了メール送信成功: {to_email}")
+            return True
         
     except Exception as e:
         print(f"❌ メール送信エラー: {e}")
