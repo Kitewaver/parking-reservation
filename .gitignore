@@ -3,3 +3,10 @@ __pycache__/
 *.db
 payment_errors.log
 .env
+credentials.json
+token.json
+get_token.py
+test_gmail.py
+venv/
+token.json
+credentials.json
