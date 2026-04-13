@@ -19,6 +19,14 @@ import sqlite3
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
+import base64
+import json
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
+import base64
+import json
 import os
 from zoneinfo import ZoneInfo
 
@@ -139,13 +147,106 @@ def cleanup_old_pending_reservations():
         return 0
 
 
+
+def send_email_via_gmail_api(to_email, subject, html_content):
+    """Gmail APIでメール送信"""
+    try:
+        token_json = os.environ.get('GMAIL_TOKEN_JSON')
+        if token_json:
+            creds = Credentials.from_authorized_user_info(json.loads(token_json))
+        else:
+            creds = Credentials.from_authorized_user_file('token.json')
+        
+        service = build('gmail', 'v1', credentials=creds)
+        
+        msg = MIMEMultipart('alternative')
+        msg['Subject'] = subject
+        msg['From'] = EMAIL_SENDER
+        msg['To'] = to_email
+        msg.attach(MIMEText(html_content, 'html'))
+        
+        raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+        result = service.users().messages().send(userId='me', body={'raw': raw}).execute()
+        print(f"📧 Gmail API送信成功: {result['id']}")
+        return True
+    except Exception as e:
+        print(f"❌ Gmail APIエラー: {e}")
+        return False
+
+
+def send_email_via_gmail_api(to_email, subject, html_content):
+    """Gmail APIでメール送信"""
+    try:
+        token_json = os.environ.get('GMAIL_TOKEN_JSON')
+        if token_json:
+            creds = Credentials.from_authorized_user_info(json.loads(token_json))
+        else:
+            creds = Credentials.from_authorized_user_file('token.json')
+        
+        service = build('gmail', 'v1', credentials=creds)
+        
+        msg = MIMEMultipart('alternative')
+        msg['Subject'] = subject
+        msg['From'] = EMAIL_SENDER
+        msg['To'] = to_email
+        msg.attach(MIMEText(html_content, 'html'))
+        
+        raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+        result = service.users().messages().send(userId='me', body={'raw': raw}).execute()
+        print(f"📧 Gmail API送信成功: {result['id']}")
+        return True
+    except Exception as e:
+        print(f"❌ Gmail APIエラー: {e}")
+        return False
+
 def send_reservation_email(to_email, customer_name, reservation_data):
     """予約完了メール送信"""
     try:
         print(f"📧 メール送信開始: {to_email}")
         print(f"   送信元: {EMAIL_SENDER}")
         
-        if USE_EMAILJS:
+        # Gmail API使用
+        time_label = '0-12時' if reservation_data['time_slot'] == 'morning' else '12-24時'
+        html = f"""
+        <html>
+        <body style="font-family: sans-serif;">
+            <h2>駐車場予約が完了しました</h2>
+            <p>{customer_name} 様</p>
+            <p>ご予約ありがとうございます。以下の内容で予約を承りました。</p>
+            <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                <h3>予約内容</h3>
+                <table style="width: 100%;">
+                    <tr><td><strong>ご利用日:</strong></td><td>{reservation_data['date']}</td></tr>
+                    <tr><td><strong>時間帯:</strong></td><td>{time_label}</td></tr>
+                    <tr><td><strong>車両番号:</strong></td><td>{reservation_data['car_number']}</td></tr>
+                    <tr><td><strong>料金:</strong></td><td>¥{reservation_data['amount']:,}</td></tr>
+                    <tr><td><strong>決済ID:</strong></td><td>{reservation_data['payment_id']}</td></tr>
+                </table>
+            </div>
+            <div style="background: #fff3cd; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                <h3>⚠️ キャンセルポリシー</h3>
+                <ul>
+                    <li>入庫2時間前まで: キャンセル可能（手数料¥100）</li>
+                    <li>2時間を切った場合: キャンセル不可・全額収納</li>
+                </ul>
+                <p>キャンセルはこちら: <a href="https://parking-reservation-rzck.onrender.com/cancel">キャンセルページ</a></p>
+            </div>
+            <hr>
+            <p style="color: #666; font-size: 12px;">
+                シャルマン鶴見市場 No.1<br>
+                〒230-0025 神奈川県横浜市鶴見区市場大和町4-9<br>
+                電話: 090-6137-9489
+            </p>
+        </body>
+        </html>
+        """
+        return send_email_via_gmail_api(
+            to_email,
+            '【予約完了】シャルマン鶴見市場 No.1 駐車場',
+            html
+        )
+
+        if False:  # 旧EmailJS/SMTPコード（無効化）
             # EmailJS使用
             import requests
             
@@ -274,7 +375,48 @@ def send_cancellation_email(to_email, customer_name, reservation_data, refund_am
     try:
         print(f"📧 キャンセルメール送信開始: {to_email}")
         
-        if USE_EMAILJS:
+        # Gmail API使用
+        time_label = '0-12時' if reservation_data['time_slot'] == 'morning' else '12-24時'
+        html = f"""
+        <html>
+        <body style="font-family: sans-serif;">
+            <h2>駐車場予約が完了しました</h2>
+            <p>{customer_name} 様</p>
+            <p>ご予約ありがとうございます。以下の内容で予約を承りました。</p>
+            <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                <h3>予約内容</h3>
+                <table style="width: 100%;">
+                    <tr><td><strong>ご利用日:</strong></td><td>{reservation_data['date']}</td></tr>
+                    <tr><td><strong>時間帯:</strong></td><td>{time_label}</td></tr>
+                    <tr><td><strong>車両番号:</strong></td><td>{reservation_data['car_number']}</td></tr>
+                    <tr><td><strong>料金:</strong></td><td>¥{reservation_data['amount']:,}</td></tr>
+                    <tr><td><strong>決済ID:</strong></td><td>{reservation_data['payment_id']}</td></tr>
+                </table>
+            </div>
+            <div style="background: #fff3cd; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                <h3>⚠️ キャンセルポリシー</h3>
+                <ul>
+                    <li>入庫2時間前まで: キャンセル可能（手数料¥100）</li>
+                    <li>2時間を切った場合: キャンセル不可・全額収納</li>
+                </ul>
+                <p>キャンセルはこちら: <a href="https://parking-reservation-rzck.onrender.com/cancel">キャンセルページ</a></p>
+            </div>
+            <hr>
+            <p style="color: #666; font-size: 12px;">
+                シャルマン鶴見市場 No.1<br>
+                〒230-0025 神奈川県横浜市鶴見区市場大和町4-9<br>
+                電話: 090-6137-9489
+            </p>
+        </body>
+        </html>
+        """
+        return send_email_via_gmail_api(
+            to_email,
+            '【予約完了】シャルマン鶴見市場 No.1 駐車場',
+            html
+        )
+
+        if False:  # 旧EmailJS/SMTPコード（無効化）
             # EmailJS使用
             import requests
             
@@ -779,12 +921,12 @@ def stripe_webhook():
                         # StripeObjectを辞書に変換（to_dict_recursiveメソッドを使用）
                         if raw_metadata:
                             try:
-                                # StripeObjectにはto_dict_recursiveメソッドがある
-                                if hasattr(raw_metadata, 'to_dict_recursive'):
+                                if isinstance(raw_metadata, dict):
+                                    metadata = raw_metadata
+                                elif hasattr(raw_metadata, 'to_dict_recursive'):
                                     metadata = raw_metadata.to_dict_recursive()
                                 else:
-                                    # または_dataプロパティを直接使う
-                                    metadata = raw_metadata._data if hasattr(raw_metadata, '_data') else {}
+                                    metadata = dict(raw_metadata)
                                 print(f"🔍 converted metadata: {metadata}")
                             except Exception as e:
                                 print(f"❌ metadata変換エラー: {e}")
