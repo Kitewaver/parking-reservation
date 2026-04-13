@@ -246,7 +246,7 @@ def send_reservation_email(to_email, customer_name, reservation_data):
         """
         return send_email_via_gmail_api(
             to_email,
-            '【キャンセル完了】シャルマン鶴見市場 No.1 駐車場',
+            '【予約完了】シャルマン鶴見市場 No.1 駐車場',
             html
         )
 
