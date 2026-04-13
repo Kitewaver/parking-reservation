@@ -48,6 +48,7 @@ else:
 
 # Stripe設定
 stripe.api_key = os.environ.get('STRIPE_SECRET_KEY', 'sk_test_YOUR_SECRET_KEY')
+BASE_URL = os.environ.get('BASE_URL', 'https://parking-reservation-rzck.onrender.com')
 STRIPE_PUBLIC_KEY = os.environ.get('STRIPE_PUBLIC_KEY', 'pk_test_51T0HAtR79rW14GmdmCOvmZaWGgfFXUzEctTgJ4UT555NcH8RnWk5V0MXKcxrFprMhPbTdJEwnVpOGp6ekqO65pTY00Kb69zulE')
 
 # Webhookシークレット（Stripeダッシュボードから取得）
@@ -256,7 +257,7 @@ def send_reservation_email(to_email, customer_name, reservation_data):
                 'car_number': reservation_data['car_number'],
                 'amount': f"¥{reservation_data['amount']:,}",
                 'payment_id': reservation_data['payment_id'],
-                'cancel_url': 'https://parking-reservation-rzck.onrender.com/cancel'
+                'cancel_url': f'{BASE_URL}/cancel'
             }
             
             # Private Key優先、なければPublic Key
@@ -326,7 +327,7 @@ def send_reservation_email(to_email, customer_name, reservation_data):
                         <li>入庫2時間前まで: キャンセル可能（手数料¥100）</li>
                         <li>2時間を切った場合: キャンセル不可・全額収納</li>
                     </ul>
-                    <p>キャンセルはこちら: <a href="https://parking-reservation-rzck.onrender.com/cancel">キャンセルページ</a></p>
+                    <p>キャンセルはこちら: <a href="{BASE_URL}/cancel">キャンセルページ</a></p>
                 </div>
                 
                 <p>ご不明な点がございましたら、お気軽にお問い合わせください。</p>
