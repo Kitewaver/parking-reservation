@@ -207,7 +207,7 @@ def send_reservation_email(to_email, customer_name, reservation_data):
         print(f"   送信元: {EMAIL_SENDER}")
         
         # Gmail API使用
-        time_label = '0-12時' if reservation_data['time_slot'] == 'morning' else '12-24時'
+        time_label = '0-12時' if reservation_data.get('time_slot', '') == 'morning' else '12-24時'
         html = f"""
         <html>
         <body style="font-family: sans-serif;">
@@ -217,11 +217,11 @@ def send_reservation_email(to_email, customer_name, reservation_data):
             <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
                 <h3>予約内容</h3>
                 <table style="width: 100%;">
-                    <tr><td><strong>ご利用日:</strong></td><td>{reservation_data['date']}</td></tr>
+                    <tr><td><strong>ご利用日:</strong></td><td>{reservation_data.get('date', '')}</td></tr>
                     <tr><td><strong>時間帯:</strong></td><td>{time_label}</td></tr>
                     <tr><td><strong>車両番号:</strong></td><td>{reservation_data.get('car_number', '')}</td></tr>
-                    <tr><td><strong>料金:</strong></td><td>¥{reservation_data['amount']:,}</td></tr>
-                    <tr><td><strong>決済ID:</strong></td><td>{reservation_data['payment_id']}</td></tr>
+                    <tr><td><strong>料金:</strong></td><td>¥{reservation_data.get('amount', 0):,}</td></tr>
+                    <tr><td><strong>決済ID:</strong></td><td>{reservation_data.get('payment_id', '')}</td></tr>
                 </table>
             </div>
             <div style="background: #fff3cd; padding: 15px; border-radius: 8px; margin: 20px 0;">
@@ -258,11 +258,11 @@ def send_reservation_email(to_email, customer_name, reservation_data):
             template_params = {
                 'to_email': to_email,
                 'customer_name': customer_name,
-                'date': reservation_data['date'],
-                'time_slot': '0-12時' if reservation_data['time_slot'] == 'morning' else '12-24時',
+                'date': reservation_data.get('date', ''),
+                'time_slot': '0-12時' if reservation_data.get('time_slot', '') == 'morning' else '12-24時',
                 'car_number': reservation_data.get('car_number', ''),
-                'amount': f"¥{reservation_data['amount']:,}",
-                'payment_id': reservation_data['payment_id'],
+                'amount': f"¥{reservation_data.get('amount', 0):,}",
+                'payment_id': reservation_data.get('payment_id', ''),
                 'cancel_url': f'{BASE_URL}/cancel'
             }
             
@@ -319,11 +319,11 @@ def send_reservation_email(to_email, customer_name, reservation_data):
                 <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
                     <h3>予約内容</h3>
                     <table style="width: 100%;">
-                        <tr><td><strong>ご利用日:</strong></td><td>{reservation_data['date']}</td></tr>
-                        <tr><td><strong>時間帯:</strong></td><td>{'0-12時' if reservation_data['time_slot'] == 'morning' else '12-24時'}</td></tr>
+                        <tr><td><strong>ご利用日:</strong></td><td>{reservation_data.get('date', '')}</td></tr>
+                        <tr><td><strong>時間帯:</strong></td><td>{'0-12時' if reservation_data.get('time_slot', '') == 'morning' else '12-24時'}</td></tr>
                         <tr><td><strong>車両番号:</strong></td><td>{reservation_data.get('car_number', '')}</td></tr>
-                        <tr><td><strong>料金:</strong></td><td>¥{reservation_data['amount']:,}</td></tr>
-                        <tr><td><strong>決済ID:</strong></td><td>{reservation_data['payment_id']}</td></tr>
+                        <tr><td><strong>料金:</strong></td><td>¥{reservation_data.get('amount', 0):,}</td></tr>
+                        <tr><td><strong>決済ID:</strong></td><td>{reservation_data.get('payment_id', '')}</td></tr>
                     </table>
                 </div>
                 
@@ -380,7 +380,7 @@ def send_cancellation_email(to_email, customer_name, reservation_data, refund_am
         print(f"📧 キャンセルメール送信開始: {to_email}")
         
         # Gmail API使用
-        time_label = '0-12時' if reservation_data['time_slot'] == 'morning' else '12-24時'
+        time_label = '0-12時' if reservation_data.get('time_slot', '') == 'morning' else '12-24時'
         html = f"""
         <html>
         <body style="font-family: sans-serif;">
@@ -390,11 +390,11 @@ def send_cancellation_email(to_email, customer_name, reservation_data, refund_am
             <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
                 <h3>予約内容</h3>
                 <table style="width: 100%;">
-                    <tr><td><strong>ご利用日:</strong></td><td>{reservation_data['date']}</td></tr>
+                    <tr><td><strong>ご利用日:</strong></td><td>{reservation_data.get('date', '')}</td></tr>
                     <tr><td><strong>時間帯:</strong></td><td>{time_label}</td></tr>
                     <tr><td><strong>車両番号:</strong></td><td>{reservation_data.get('car_number', '')}</td></tr>
-                    <tr><td><strong>料金:</strong></td><td>¥{reservation_data['amount']:,}</td></tr>
-                    <tr><td><strong>決済ID:</strong></td><td>{reservation_data['payment_id']}</td></tr>
+                    <tr><td><strong>料金:</strong></td><td>¥{reservation_data.get('amount', 0):,}</td></tr>
+                    <tr><td><strong>決済ID:</strong></td><td>{reservation_data.get('payment_id', '')}</td></tr>
                 </table>
             </div>
             <div style="background: #fff3cd; padding: 15px; border-radius: 8px; margin: 20px 0;">
@@ -434,8 +434,8 @@ def send_cancellation_email(to_email, customer_name, reservation_data, refund_am
             template_params = {
                 'to_email': to_email,
                 'customer_name': customer_name,
-                'date': reservation_data['date'],
-                'time_slot': '0-12時' if reservation_data['time_slot'] == 'morning' else '12-24時',
+                'date': reservation_data.get('date', ''),
+                'time_slot': '0-12時' if reservation_data.get('time_slot', '') == 'morning' else '12-24時',
                 'car_number': reservation_data.get('car_number', ''),
                 'original_amount': f"¥{original_amount:,}",
                 'fee': f"{fee:,}",
@@ -491,8 +491,8 @@ def send_cancellation_email(to_email, customer_name, reservation_data, refund_am
                 <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
                     <h3>キャンセル内容</h3>
                     <table style="width: 100%;">
-                        <tr><td><strong>ご利用日:</strong></td><td>{reservation_data['date']}</td></tr>
-                        <tr><td><strong>時間帯:</strong></td><td>{'0-12時' if reservation_data['time_slot'] == 'morning' else '12-24時'}</td></tr>
+                        <tr><td><strong>ご利用日:</strong></td><td>{reservation_data.get('date', '')}</td></tr>
+                        <tr><td><strong>時間帯:</strong></td><td>{'0-12時' if reservation_data.get('time_slot', '') == 'morning' else '12-24時'}</td></tr>
                         <tr><td><strong>返金額:</strong></td><td>¥{refund_amount:,}</td></tr>
                         <tr><td><strong>キャンセル手数料:</strong></td><td>¥{fee}</td></tr>
                     </table>
