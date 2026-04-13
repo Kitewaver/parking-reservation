@@ -207,29 +207,26 @@ def send_reservation_email(to_email, customer_name, reservation_data):
         
         # Gmail API使用
         time_label = '0-12時' if reservation_data['time_slot'] == 'morning' else '12-24時'
+        original_amount = refund_amount + fee
         html = f"""
         <html>
         <body style="font-family: sans-serif;">
-            <h2>駐車場予約が完了しました</h2>
+            <h2>予約キャンセルが完了しました</h2>
             <p>{customer_name} 様</p>
-            <p>ご予約ありがとうございます。以下の内容で予約を承りました。</p>
+            <p>以下の予約をキャンセルしました。</p>
             <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
-                <h3>予約内容</h3>
+                <h3>キャンセル内容</h3>
                 <table style="width: 100%;">
                     <tr><td><strong>ご利用日:</strong></td><td>{reservation_data['date']}</td></tr>
                     <tr><td><strong>時間帯:</strong></td><td>{time_label}</td></tr>
-                    <tr><td><strong>車両番号:</strong></td><td>{reservation_data['car_number']}</td></tr>
-                    <tr><td><strong>料金:</strong></td><td>¥{reservation_data['amount']:,}</td></tr>
-                    <tr><td><strong>決済ID:</strong></td><td>{reservation_data['payment_id']}</td></tr>
+                    <tr><td><strong>車両番号:</strong></td><td>{reservation_data.get('car_number', '')}</td></tr>
+                    <tr><td><strong>お支払い金額:</strong></td><td>¥{original_amount:,}</td></tr>
+                    <tr><td><strong>キャンセル手数料:</strong></td><td>¥{fee:,}</td></tr>
+                    <tr><td><strong>返金額:</strong></td><td>¥{refund_amount:,}</td></tr>
                 </table>
             </div>
-            <div style="background: #fff3cd; padding: 15px; border-radius: 8px; margin: 20px 0;">
-                <h3>⚠️ キャンセルポリシー</h3>
-                <ul>
-                    <li>入庫2時間前まで: キャンセル可能（手数料¥100）</li>
-                    <li>2時間を切った場合: キャンセル不可・全額収納</li>
-                </ul>
-                <p>キャンセルはこちら: <a href="https://parking-reservation-rzck.onrender.com/cancel">キャンセルページ</a></p>
+            <div style="background: #d4edda; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                <p>返金は数日以内にクレジットカードに反映されます。</p>
             </div>
             <hr>
             <p style="color: #666; font-size: 12px;">
@@ -242,7 +239,7 @@ def send_reservation_email(to_email, customer_name, reservation_data):
         """
         return send_email_via_gmail_api(
             to_email,
-            '【予約完了】シャルマン鶴見市場 No.1 駐車場',
+            '【キャンセル完了】シャルマン鶴見市場 No.1 駐車場',
             html
         )
 
@@ -377,29 +374,26 @@ def send_cancellation_email(to_email, customer_name, reservation_data, refund_am
         
         # Gmail API使用
         time_label = '0-12時' if reservation_data['time_slot'] == 'morning' else '12-24時'
+        original_amount = refund_amount + fee
         html = f"""
         <html>
         <body style="font-family: sans-serif;">
-            <h2>駐車場予約が完了しました</h2>
+            <h2>予約キャンセルが完了しました</h2>
             <p>{customer_name} 様</p>
-            <p>ご予約ありがとうございます。以下の内容で予約を承りました。</p>
+            <p>以下の予約をキャンセルしました。</p>
             <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
-                <h3>予約内容</h3>
+                <h3>キャンセル内容</h3>
                 <table style="width: 100%;">
                     <tr><td><strong>ご利用日:</strong></td><td>{reservation_data['date']}</td></tr>
                     <tr><td><strong>時間帯:</strong></td><td>{time_label}</td></tr>
-                    <tr><td><strong>車両番号:</strong></td><td>{reservation_data['car_number']}</td></tr>
-                    <tr><td><strong>料金:</strong></td><td>¥{reservation_data['amount']:,}</td></tr>
-                    <tr><td><strong>決済ID:</strong></td><td>{reservation_data['payment_id']}</td></tr>
+                    <tr><td><strong>車両番号:</strong></td><td>{reservation_data.get('car_number', '')}</td></tr>
+                    <tr><td><strong>お支払い金額:</strong></td><td>¥{original_amount:,}</td></tr>
+                    <tr><td><strong>キャンセル手数料:</strong></td><td>¥{fee:,}</td></tr>
+                    <tr><td><strong>返金額:</strong></td><td>¥{refund_amount:,}</td></tr>
                 </table>
             </div>
-            <div style="background: #fff3cd; padding: 15px; border-radius: 8px; margin: 20px 0;">
-                <h3>⚠️ キャンセルポリシー</h3>
-                <ul>
-                    <li>入庫2時間前まで: キャンセル可能（手数料¥100）</li>
-                    <li>2時間を切った場合: キャンセル不可・全額収納</li>
-                </ul>
-                <p>キャンセルはこちら: <a href="https://parking-reservation-rzck.onrender.com/cancel">キャンセルページ</a></p>
+            <div style="background: #d4edda; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                <p>返金は数日以内にクレジットカードに反映されます。</p>
             </div>
             <hr>
             <p style="color: #666; font-size: 12px;">
@@ -412,7 +406,7 @@ def send_cancellation_email(to_email, customer_name, reservation_data, refund_am
         """
         return send_email_via_gmail_api(
             to_email,
-            '【予約完了】シャルマン鶴見市場 No.1 駐車場',
+            '【キャンセル完了】シャルマン鶴見市場 No.1 駐車場',
             html
         )
 
