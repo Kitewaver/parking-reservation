@@ -219,7 +219,7 @@ def send_reservation_email(to_email, customer_name, reservation_data):
                 <table style="width: 100%;">
                     <tr><td><strong>ご利用日:</strong></td><td>{reservation_data['date']}</td></tr>
                     <tr><td><strong>時間帯:</strong></td><td>{time_label}</td></tr>
-                    <tr><td><strong>車両番号:</strong></td><td>{reservation_data['car_number']}</td></tr>
+                    <tr><td><strong>車両番号:</strong></td><td>{reservation_data.get('car_number', '')}</td></tr>
                     <tr><td><strong>料金:</strong></td><td>¥{reservation_data['amount']:,}</td></tr>
                     <tr><td><strong>決済ID:</strong></td><td>{reservation_data['payment_id']}</td></tr>
                 </table>
@@ -260,7 +260,7 @@ def send_reservation_email(to_email, customer_name, reservation_data):
                 'customer_name': customer_name,
                 'date': reservation_data['date'],
                 'time_slot': '0-12時' if reservation_data['time_slot'] == 'morning' else '12-24時',
-                'car_number': reservation_data['car_number'],
+                'car_number': reservation_data.get('car_number', ''),
                 'amount': f"¥{reservation_data['amount']:,}",
                 'payment_id': reservation_data['payment_id'],
                 'cancel_url': f'{BASE_URL}/cancel'
@@ -321,7 +321,7 @@ def send_reservation_email(to_email, customer_name, reservation_data):
                     <table style="width: 100%;">
                         <tr><td><strong>ご利用日:</strong></td><td>{reservation_data['date']}</td></tr>
                         <tr><td><strong>時間帯:</strong></td><td>{'0-12時' if reservation_data['time_slot'] == 'morning' else '12-24時'}</td></tr>
-                        <tr><td><strong>車両番号:</strong></td><td>{reservation_data['car_number']}</td></tr>
+                        <tr><td><strong>車両番号:</strong></td><td>{reservation_data.get('car_number', '')}</td></tr>
                         <tr><td><strong>料金:</strong></td><td>¥{reservation_data['amount']:,}</td></tr>
                         <tr><td><strong>決済ID:</strong></td><td>{reservation_data['payment_id']}</td></tr>
                     </table>
@@ -392,7 +392,7 @@ def send_cancellation_email(to_email, customer_name, reservation_data, refund_am
                 <table style="width: 100%;">
                     <tr><td><strong>ご利用日:</strong></td><td>{reservation_data['date']}</td></tr>
                     <tr><td><strong>時間帯:</strong></td><td>{time_label}</td></tr>
-                    <tr><td><strong>車両番号:</strong></td><td>{reservation_data['car_number']}</td></tr>
+                    <tr><td><strong>車両番号:</strong></td><td>{reservation_data.get('car_number', '')}</td></tr>
                     <tr><td><strong>料金:</strong></td><td>¥{reservation_data['amount']:,}</td></tr>
                     <tr><td><strong>決済ID:</strong></td><td>{reservation_data['payment_id']}</td></tr>
                 </table>
