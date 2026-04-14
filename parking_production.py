@@ -162,7 +162,7 @@ def send_email_via_gmail_api(to_email, subject, html_content):
         
         msg = MIMEMultipart('alternative')
         msg['Subject'] = subject
-        msg['From'] = EMAIL_SENDER
+        msg['From'] = f'シャルマン鶴見市場駐車場 <{EMAIL_SENDER}>'
         msg['To'] = to_email
         msg.attach(MIMEText(html_content, 'html'))
         
@@ -188,7 +188,7 @@ def send_email_via_gmail_api(to_email, subject, html_content):
         
         msg = MIMEMultipart('alternative')
         msg['Subject'] = subject
-        msg['From'] = EMAIL_SENDER
+        msg['From'] = f'シャルマン鶴見市場駐車場 <{EMAIL_SENDER}>'
         msg['To'] = to_email
         msg.attach(MIMEText(html_content, 'html'))
         
@@ -379,7 +379,7 @@ def send_reservation_email(to_email, customer_name, reservation_data):
             
             msg = MIMEMultipart('alternative')
             msg['Subject'] = '【予約完了】シャルマン鶴見市場 No.1 駐車場'
-            msg['From'] = EMAIL_SENDER
+            msg['From'] = f'シャルマン鶴見市場駐車場 <{EMAIL_SENDER}>'
             msg['To'] = to_email
             
             html = f"""
@@ -545,7 +545,7 @@ def send_cancellation_email(to_email, customer_name, reservation_data, refund_am
             # Gmail SMTP使用
             msg = MIMEMultipart('alternative')
             msg['Subject'] = '【キャンセル完了】シャルマン鶴見市場 No.1 駐車場'
-            msg['From'] = EMAIL_SENDER
+            msg['From'] = f'シャルマン鶴見市場駐車場 <{EMAIL_SENDER}>'
             msg['To'] = to_email
             
             html = f"""
