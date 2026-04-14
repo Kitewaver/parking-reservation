@@ -1512,6 +1512,34 @@ def add_closed_date():
             ''', (date, reason, datetime.now().isoformat()))
         
         conn.commit()
+
+        # Google Calendarに登録
+        try:
+            from google.oauth2.credentials import Credentials
+            from googleapiclient.discovery import build
+            import json as json_module
+            token_json = os.environ.get('GMAIL_TOKEN_JSON')
+            if token_json:
+                creds = Credentials.from_authorized_user_info(json_module.loads(token_json))
+            else:
+                creds = Credentials.from_authorized_user_file('token.json')
+            cal_service = build('calendar', 'v3', credentials=creds)
+            event = {
+                'summary': f'🚫 休業日: {reason}',
+                'description': f'理由: {reason}',
+                'start': {'date': date},
+                'end': {'date': date},
+            }
+            cal_result = cal_service.events().insert(calendarId='primary', body=event).execute()
+            cal_event_id = cal_result.get('id')
+            if USE_POSTGRES:
+                cursor.execute('UPDATE closed_dates SET calendar_event_id = %s WHERE date = %s', (cal_event_id, date))
+            else:
+                cursor.execute('UPDATE closed_dates SET calendar_event_id = ? WHERE date = ?', (cal_event_id, date))
+            conn.commit()
+            print(f"📅 休業日カレンダー登録: {date} - {cal_event_id}")
+        except Exception as cal_error:
+            print(f"⚠️  休業日カレンダー登録エラー: {cal_error}")
         conn.close()
         
         return jsonify({'success': True})
@@ -1521,20 +1549,44 @@ def add_closed_date():
 
 
 @app.route('/api/closed-dates/<int:id>', methods=['DELETE'])
-@require_admin_auth
 def delete_closed_date(id):
     """休業日削除"""
     conn = get_db_connection()
     cursor = conn.cursor()
-    
+
+    # calendar_event_idを取得
+    if USE_POSTGRES:
+        cursor.execute('SELECT calendar_event_id FROM closed_dates WHERE id = %s', (id,))
+    else:
+        cursor.execute('SELECT calendar_event_id FROM closed_dates WHERE id = ?', (id,))
+    row = cursor.fetchone()
+    cal_event_id = row[0] if row else None
+
     if USE_POSTGRES:
         cursor.execute('DELETE FROM closed_dates WHERE id = %s', (id,))
     else:
         cursor.execute('DELETE FROM closed_dates WHERE id = ?', (id,))
-    
+
     conn.commit()
     conn.close()
-    
+
+    # Google Calendarから削除
+    if cal_event_id:
+        try:
+            from google.oauth2.credentials import Credentials
+            from googleapiclient.discovery import build
+            import json as json_module
+            token_json = os.environ.get('GMAIL_TOKEN_JSON')
+            if token_json:
+                creds = Credentials.from_authorized_user_info(json_module.loads(token_json))
+            else:
+                creds = Credentials.from_authorized_user_file('token.json')
+            cal_service = build('calendar', 'v3', credentials=creds)
+            cal_service.events().delete(calendarId='primary', eventId=cal_event_id).execute()
+            print(f"📅 休業日カレンダー削除: {cal_event_id}")
+        except Exception as cal_error:
+            print(f"⚠️  休業日カレンダー削除エラー: {cal_error}")
+
     return jsonify({'success': True})
 
 
