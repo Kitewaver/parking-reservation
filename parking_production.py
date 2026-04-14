@@ -1525,7 +1525,7 @@ def add_closed_date():
                 creds = Credentials.from_authorized_user_file('token.json')
             cal_service = build('calendar', 'v3', credentials=creds)
             event = {
-                'summary': f'🚫 休業日: {reason}',
+                'summary': f'🚫 駐車場休業日: {reason}',
                 'description': f'理由: {reason}',
                 'start': {'date': date},
                 'end': {'date': date},
