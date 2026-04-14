@@ -1156,7 +1156,7 @@ def stripe_webhook():
 
                     # Google Calendar登録
                     try:
-                        add_to_google_calendar(
+                        calendar_event_id = add_to_google_calendar(
                             reservation_data={
                                 'date': metadata.get('date'),
                                 'time_slot': metadata.get('time_slot'),
@@ -1168,6 +1168,23 @@ def stripe_webhook():
                             },
                             customer_name=metadata.get('customer_name', 'お客様')
                         )
+                        # event_idをDBに保存
+                        if calendar_event_id:
+                            conn2 = get_db_connection()
+                            cursor2 = conn2.cursor()
+                            if USE_POSTGRES:
+                                cursor2.execute(
+                                    'UPDATE reservations SET calendar_event_id = %s WHERE payment_id = %s',
+                                    (calendar_event_id, payment_id)
+                                )
+                            else:
+                                cursor2.execute(
+                                    'UPDATE reservations SET calendar_event_id = ? WHERE payment_id = ?',
+                                    (calendar_event_id, payment_id)
+                                )
+                            conn2.commit()
+                            conn2.close()
+                            print(f"📅 カレンダーイベントIDをDBに保存: {calendar_event_id}")
                     except Exception as cal_error:
                         print(f"⚠️  カレンダー登録エラー（予約は完了）: {cal_error}")
                     
@@ -1391,7 +1408,17 @@ def cancel_reservation():
                 refund_amount=refund_amount,
                 fee=cancellation_fee
             )
-        
+
+        # Google Calendarからイベント削除
+        try:
+            calendar_event_id = row[12] if len(row) > 12 else None
+            if calendar_event_id:
+                delete_from_google_calendar(calendar_event_id)
+            else:
+                print("⚠️  カレンダーイベントIDなし（削除スキップ）")
+        except Exception as cal_error:
+            print(f"⚠️  カレンダー削除エラー（キャンセルは完了）: {cal_error}")
+
         conn.close()
         
         print(f"✅ キャンセル完了: 払戻¥{refund_amount}")
