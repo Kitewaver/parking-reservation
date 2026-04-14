@@ -200,6 +200,80 @@ def send_email_via_gmail_api(to_email, subject, html_content):
         print(f"❌ Gmail APIエラー: {e}")
         return False
 
+
+def add_to_google_calendar(reservation_data, customer_name):
+    """Google Calendarに予約を登録"""
+    try:
+        from google.oauth2.credentials import Credentials
+        from googleapiclient.discovery import build
+        import json
+        from datetime import datetime
+
+        token_json = os.environ.get('GMAIL_TOKEN_JSON')
+        if token_json:
+            creds = Credentials.from_authorized_user_info(json.loads(token_json))
+        else:
+            creds = Credentials.from_authorized_user_file('token.json')
+
+        service = build('calendar', 'v3', credentials=creds)
+
+        date = reservation_data.get('date', '')
+        time_slot = reservation_data.get('time_slot', '')
+
+        if time_slot == 'morning':
+            start_time = f"{date}T00:00:00"
+            end_time = f"{date}T12:00:00"
+            slot_label = '0-12時'
+        else:
+            start_time = f"{date}T12:00:00"
+            end_time = f"{date}T23:59:00"
+            slot_label = '12-24時'
+
+        event = {
+            'summary': f"🚗 駐車場予約: {customer_name}",
+            'description': (
+                f"車両番号: {reservation_data.get('car_number', '')}\n"
+                f"時間帯: {slot_label}\n"
+                f"料金: ¥{reservation_data.get('amount', 0):,}\n"
+                f"決済ID: {reservation_data.get('payment_id', '')}\n"
+                f"電話: {reservation_data.get('phone', '')}\n"
+                f"メール: {reservation_data.get('email', '')}"
+            ),
+            'start': {'dateTime': start_time, 'timeZone': 'Asia/Tokyo'},
+            'end': {'dateTime': end_time, 'timeZone': 'Asia/Tokyo'},
+        }
+
+        result = service.events().insert(calendarId='primary', body=event).execute()
+        print(f"📅 カレンダー登録成功: {result.get('id')}")
+        return result.get('id')
+
+    except Exception as e:
+        print(f"❌ カレンダー登録エラー: {e}")
+        return None
+
+
+def delete_from_google_calendar(calendar_event_id):
+    """Google Calendarから予約を削除"""
+    try:
+        from google.oauth2.credentials import Credentials
+        from googleapiclient.discovery import build
+        import json
+
+        token_json = os.environ.get('GMAIL_TOKEN_JSON')
+        if token_json:
+            creds = Credentials.from_authorized_user_info(json.loads(token_json))
+        else:
+            creds = Credentials.from_authorized_user_file('token.json')
+
+        service = build('calendar', 'v3', credentials=creds)
+        service.events().delete(calendarId='primary', eventId=calendar_event_id).execute()
+        print(f"📅 カレンダー削除成功: {calendar_event_id}")
+        return True
+
+    except Exception as e:
+        print(f"❌ カレンダー削除エラー: {e}")
+        return False
+
 def send_reservation_email(to_email, customer_name, reservation_data):
     """予約完了メール送信"""
     try:
@@ -1079,6 +1153,23 @@ def stripe_webhook():
                             )
                         except Exception as email_error:
                             print(f"⚠️  メール送信エラー（予約は完了）: {email_error}")
+
+                    # Google Calendar登録
+                    try:
+                        add_to_google_calendar(
+                            reservation_data={
+                                'date': metadata.get('date'),
+                                'time_slot': metadata.get('time_slot'),
+                                'car_number': metadata.get('car_number'),
+                                'amount': amount,
+                                'payment_id': payment_id,
+                                'phone': metadata.get('phone', ''),
+                                'email': metadata.get('email', '')
+                            },
+                            customer_name=metadata.get('customer_name', 'お客様')
+                        )
+                    except Exception as cal_error:
+                        print(f"⚠️  カレンダー登録エラー（予約は完了）: {cal_error}")
                     
                 except Exception as e:
                     print(f"❌ DB保存エラー: {e}")
