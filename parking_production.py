@@ -1301,17 +1301,18 @@ def index():
         .cal-nav { background: none; border: 1px solid #ddd; border-radius: 6px; padding: 6px 14px; cursor: pointer; font-size: 16px; width: auto; }
         .cal-nav:hover { background: #f0f0f0; }
         .cal-month-label { font-weight: bold; font-size: 16px; color: #333; }
-        .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
-        .cal-dayname { text-align: center; font-size: 11px; font-weight: 600; color: #888; padding: 4px 0; }
+        .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; width: 100%; box-sizing: border-box; }
+        .cal-dayname { text-align: center; font-size: 10px; font-weight: 600; color: #888; padding: 3px 0; }
         .cal-dayname:first-child { color: #e74c3c; }
         .cal-dayname:last-child  { color: #667eea; }
         .cal-cell {
-            border-radius: 6px; padding: 4px 2px; text-align: center;
-            font-size: 12px; cursor: default; min-height: 52px;
+            border-radius: 4px; padding: 3px 1px; text-align: center;
+            font-size: 10px; cursor: default; min-height: 48px;
             display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
-            gap: 2px; border: 1.5px solid transparent;
+            gap: 1px; border: 1.5px solid transparent;
+            box-sizing: border-box; overflow: hidden; min-width: 0;
         }
-        .cal-cell .cal-date { font-size: 13px; font-weight: 500; padding: 2px 0; }
+        .cal-cell .cal-date { font-size: 12px; font-weight: 500; padding: 1px 0; }
         .cal-cell.empty { background: transparent; }
         .cal-cell.past  { background: #fafafa; opacity: 0.45; }
         .cal-cell.closed {
@@ -1323,8 +1324,14 @@ def index():
         .cal-cell.available:hover { border-color: #667eea; background: #eef0ff; }
         .cal-cell.selected { border-color: #667eea !important; background: #eef0ff !important; }
         .slot-badge {
-            font-size: 10px; padding: 1px 5px; border-radius: 3px;
-            font-weight: 500; white-space: nowrap;
+            font-size: 9px; padding: 1px 2px; border-radius: 2px;
+            font-weight: 500; white-space: normal; word-break: break-all;
+            display: block; width: 100%; text-align: center; line-height: 1.2;
+        }
+        @media (max-width: 400px) {
+            .cal-cell { min-height: 44px; padding: 2px 1px; }
+            .cal-cell .cal-date { font-size: 11px; }
+            .slot-badge { font-size: 8px; }
         }
         .badge-available { background: #d4edda; color: #155724; }
         .badge-reserved  { background: #f8d7da; color: #721c24; }
@@ -1508,12 +1515,14 @@ function slotBadgeHTML(status, label) {
         past:      'badge-past',
     }[status] || 'badge-past';
     const text = {
-        available: '空き',
-        reserved:  '予約済',
-        closed:    '休業',
-        past:      '----',
-    }[status] || '----';
-    return `<span class="slot-badge ${cls}">${label}: ${text}</span>`;
+        available: '空',
+        reserved:  '済',
+        closed:    '休',
+        past:      '-',
+    }[status] || '-';
+    // ラベルも短縮（午前→前、午後→後）
+    const shortLabel = label === '午前' ? '前' : '後';
+    return `<span class="slot-badge ${cls}">${shortLabel}${text}</span>`;
 }
 
 async function renderCalendar() {
