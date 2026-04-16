@@ -88,10 +88,12 @@ def setup_test_db():
     cur.execute('''
         CREATE TABLE IF NOT EXISTS closed_dates (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            date TEXT UNIQUE,
+            date TEXT NOT NULL,
+            time_slot TEXT NOT NULL,
             reason TEXT,
             created_at TEXT,
-            calendar_event_id TEXT
+            calendar_event_id TEXT,
+            UNIQUE(date, time_slot)
         )
     ''')
     conn.commit()
@@ -343,8 +345,12 @@ def test_month_availability_logic():
     # 翌月2日を休業日に
     closed_date = f"{year}-{str(month).zfill(2)}-02"
     cur.execute(
-        "INSERT OR IGNORE INTO closed_dates (date, reason, created_at) VALUES (?,?,?)",
-        (closed_date, 'テスト休業日', datetime.now().isoformat())
+        "INSERT OR IGNORE INTO closed_dates (date, time_slot, reason, created_at) VALUES (?,?,?,?)",
+        (closed_date, 'morning', 'テスト休業日', datetime.now().isoformat())
+    )
+    cur.execute(
+        "INSERT OR IGNORE INTO closed_dates (date, time_slot, reason, created_at) VALUES (?,?,?,?)",
+        (closed_date, 'afternoon', 'テスト休業日', datetime.now().isoformat())
     )
     conn.commit()
 
@@ -355,12 +361,12 @@ def test_month_availability_logic():
     )
     reserved = {(r[0], r[1]) for r in cur.fetchall()}
 
-    # 休業日取得
+    # 休業日取得（date, time_slot ペア）
     cur.execute(
-        "SELECT date FROM closed_dates WHERE date >= ? AND date <= ?",
+        "SELECT date, time_slot FROM closed_dates WHERE date >= ? AND date <= ?",
         (month_start, month_end)
     )
-    closed = {r[0] for r in cur.fetchall()}
+    closed = {(r[0], r[1]) for r in cur.fetchall()}
     conn.close()
 
     print(f"   対象月: {year}年{month}月")
@@ -368,7 +374,7 @@ def test_month_availability_logic():
     print(f"   休業日: {closed}")
 
     morning_reserved = (test_date, 'morning') in reserved
-    day2_closed = closed_date in closed
+    day2_closed = (closed_date, 'morning') in closed and (closed_date, 'afternoon') in closed
 
     print(f"   {test_date} 午前が予約済み: {'✅' if morning_reserved else '❌'}")
     print(f"   {closed_date} が休業日: {'✅' if day2_closed else '❌'}")
@@ -391,10 +397,11 @@ def test_closed_date_both_slots():
     now = datetime.now(JST)
     # 既存の休業日を検索
     future = (now + timedelta(days=1)).date().isoformat()
-    cur.execute(
-        "INSERT OR IGNORE INTO closed_dates (date, reason, created_at) VALUES (?,?,?)",
-        (future, 'テスト', now.isoformat())
-    )
+    for slot in ('morning', 'afternoon'):
+        cur.execute(
+            "INSERT OR IGNORE INTO closed_dates (date, time_slot, reason, created_at) VALUES (?,?,?,?)",
+            (future, slot, 'テスト', now.isoformat())
+        )
     conn.commit()
     cur.execute("SELECT date FROM closed_dates WHERE date=?", (future,))
     row = cur.fetchone()

@@ -346,10 +346,12 @@ def init_database():
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS closed_dates (
                 id SERIAL PRIMARY KEY,
-                date TEXT UNIQUE,
+                date TEXT NOT NULL,
+                time_slot TEXT NOT NULL CHECK (time_slot IN ('morning', 'afternoon')),
                 reason TEXT,
                 created_at TEXT,
-                calendar_event_id TEXT
+                calendar_event_id TEXT,
+                UNIQUE(date, time_slot)
             )
         ''')
         # 既存テーブルへのカラム追加（既存DB対応）
@@ -399,10 +401,12 @@ def init_database():
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS closed_dates (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                date TEXT UNIQUE,
+                date TEXT NOT NULL,
+                time_slot TEXT NOT NULL CHECK (time_slot IN ('morning', 'afternoon')),
                 reason TEXT,
                 created_at TEXT,
-                calendar_event_id TEXT
+                calendar_event_id TEXT,
+                UNIQUE(date, time_slot)
             )
         ''')
 
@@ -461,9 +465,15 @@ def check_availability():
         cursor = conn.cursor()
 
         if USE_POSTGRES:
-            cursor.execute('SELECT * FROM closed_dates WHERE date = %s', (date,))
+            cursor.execute(
+                'SELECT * FROM closed_dates WHERE date = %s AND time_slot = %s',
+                (date, time_slot)
+            )
         else:
-            cursor.execute('SELECT * FROM closed_dates WHERE date = ?', (date,))
+            cursor.execute(
+                'SELECT * FROM closed_dates WHERE date = ? AND time_slot = ?',
+                (date, time_slot)
+            )
         if cursor.fetchone():
             conn.close()
             return jsonify({'available': False, 'reason': 'closed'})
@@ -531,18 +541,18 @@ def month_availability():
             )
         reserved = {(row[0], row[1]) for row in cursor.fetchall()}
 
-        # 月内の休業日を取得
+        # 月内の休業日を取得（date, time_slot のペアで管理）
         if USE_POSTGRES:
             cursor.execute(
-                "SELECT date FROM closed_dates WHERE date >= %s AND date <= %s",
+                "SELECT date, time_slot FROM closed_dates WHERE date >= %s AND date <= %s",
                 (start_str, end_str)
             )
         else:
             cursor.execute(
-                "SELECT date FROM closed_dates WHERE date >= ? AND date <= ?",
+                "SELECT date, time_slot FROM closed_dates WHERE date >= ? AND date <= ?",
                 (start_str, end_str)
             )
-        closed = {row[0] for row in cursor.fetchall()}
+        closed = {(row[0], row[1]) for row in cursor.fetchall()}
         conn.close()
 
         result = {}
@@ -551,16 +561,15 @@ def month_availability():
             date_str = current.isoformat()
             day_status = {}
 
-            if date_str in closed:
-                day_status = {"morning": "closed", "afternoon": "closed"}
-            elif current < today:
+            if current < today:
                 day_status = {"morning": "past", "afternoon": "past"}
             else:
                 for slot in ["morning", "afternoon"]:
-                    if (date_str, slot) in reserved:
+                    if (date_str, slot) in closed:
+                        day_status[slot] = "closed"
+                    elif (date_str, slot) in reserved:
                         day_status[slot] = "reserved"
                     elif current == today:
-                        # 当日: 時間帯が過ぎていたら past 扱い
                         if slot == "morning" and now_hour >= 12:
                             day_status[slot] = "past"
                         else:
@@ -891,7 +900,7 @@ def get_closed_dates():
     cursor = conn.cursor()
     cursor.execute('SELECT * FROM closed_dates ORDER BY date')
     rows = cursor.fetchall()
-    closed_dates = [{'id': r[0], 'date': r[1], 'reason': r[2]} for r in rows]
+    closed_dates = [{'id': r[0], 'date': r[1], 'time_slot': r[2], 'reason': r[3]} for r in rows]
     conn.close()
     return jsonify(closed_dates)
 
@@ -902,7 +911,11 @@ def add_closed_date():
     try:
         data = request.json
         date = data.get('date')
+        time_slot = data.get('time_slot')  # 'morning' or 'afternoon'
         reason = data.get('reason', '休業日')
+
+        if time_slot not in ('morning', 'afternoon'):
+            return jsonify({'error': 'time_slot は morning または afternoon を指定してください'}), 400
 
         target_date = datetime.fromisoformat(date).date()
         max_date = (datetime.now() + timedelta(days=60)).date()
@@ -912,22 +925,36 @@ def add_closed_date():
         conn = get_db_connection()
         cursor = conn.cursor()
 
+        # 同一スロットに予約が入っていないかチェック
         if USE_POSTGRES:
-            cursor.execute("SELECT COUNT(*) FROM reservations WHERE date=%s AND status='confirmed'", (date,))
+            cursor.execute(
+                "SELECT COUNT(*) FROM reservations WHERE date=%s AND time_slot=%s AND status='confirmed'",
+                (date, time_slot)
+            )
         else:
-            cursor.execute("SELECT COUNT(*) FROM reservations WHERE date=? AND status='confirmed'", (date,))
+            cursor.execute(
+                "SELECT COUNT(*) FROM reservations WHERE date=? AND time_slot=? AND status='confirmed'",
+                (date, time_slot)
+            )
         if cursor.fetchone()[0] > 0:
+            slot_label = '午前' if time_slot == 'morning' else '午後'
             conn.close()
-            return jsonify({'error': 'この日には既に予約が入っています'}), 400
+            return jsonify({'error': f'この日の{slot_label}枠には既に予約が入っています'}), 400
 
         if USE_POSTGRES:
-            cursor.execute('INSERT INTO closed_dates (date,reason,created_at) VALUES(%s,%s,%s)',
-                           (date, reason, datetime.now().isoformat()))
+            cursor.execute(
+                'INSERT INTO closed_dates (date,time_slot,reason,created_at) VALUES(%s,%s,%s,%s)',
+                (date, time_slot, reason, datetime.now().isoformat())
+            )
         else:
-            cursor.execute('INSERT INTO closed_dates (date,reason,created_at) VALUES(?,?,?)',
-                           (date, reason, datetime.now().isoformat()))
+            cursor.execute(
+                'INSERT INTO closed_dates (date,time_slot,reason,created_at) VALUES(?,?,?,?)',
+                (date, time_slot, reason, datetime.now().isoformat())
+            )
         conn.commit()
 
+        # Google Calendar 登録
+        slot_label = '午前（0-12時）' if time_slot == 'morning' else '午後（12-24時）'
         try:
             token_json = os.environ.get('GMAIL_TOKEN_JSON')
             if token_json:
@@ -935,14 +962,24 @@ def add_closed_date():
             else:
                 creds = Credentials.from_authorized_user_file('token.json')
             cal = build('calendar', 'v3', credentials=creds)
-            event = {'summary': f'🚫 駐車場休業日: {reason}', 'description': reason,
-                     'start': {'date': date}, 'end': {'date': date}}
+            event = {
+                'summary': f'🚫 駐車場休業: {slot_label} {reason}',
+                'description': reason,
+                'start': {'date': date},
+                'end': {'date': date}
+            }
             cal_result = cal.events().insert(calendarId='primary', body=event).execute()
             cal_id = cal_result.get('id')
             if USE_POSTGRES:
-                cursor.execute('UPDATE closed_dates SET calendar_event_id=%s WHERE date=%s', (cal_id, date))
+                cursor.execute(
+                    'UPDATE closed_dates SET calendar_event_id=%s WHERE date=%s AND time_slot=%s',
+                    (cal_id, date, time_slot)
+                )
             else:
-                cursor.execute('UPDATE closed_dates SET calendar_event_id=? WHERE date=?', (cal_id, date))
+                cursor.execute(
+                    'UPDATE closed_dates SET calendar_event_id=? WHERE date=? AND time_slot=?',
+                    (cal_id, date, time_slot)
+                )
             conn.commit()
         except Exception as e:
             print(f"⚠️ 休業日カレンダー登録エラー: {e}")
@@ -1974,8 +2011,15 @@ def admin():
     <div id="closed" class="tab-content">
         <div class="section">
             <h2>休業日追加</h2>
-            <input type="date" id="new-closed-date">
-            <button onclick="addClosedDate()">追加</button>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                <input type="date" id="new-closed-date">
+                <select id="new-closed-slot" style="padding:8px;border:1px solid #ddd;border-radius:4px;">
+                    <option value="morning">午前（0-12時）</option>
+                    <option value="afternoon">午後（12-24時）</option>
+                </select>
+                <button onclick="addClosedDate()">追加</button>
+            </div>
+            <p style="margin-top:8px;font-size:12px;color:#888;">※終日休業にする場合は午前・午後を個別に2回追加してください</p>
         </div>
         <div class="section">
             <h2>休業日一覧</h2>
@@ -2005,19 +2049,36 @@ async function loadReservations() {
 async function loadClosedDates() {
     const res = await fetch('/api/closed-dates');
     const data = await res.json();
-    let html = '<table><tr><th>日付</th><th>理由</th><th>操作</th></tr>';
+    let html = '<table><tr><th>日付</th><th>時間帯</th><th>理由</th><th>操作</th></tr>';
     data.forEach(d => {
-        html += `<tr><td>${d.date}</td><td>${d.reason}</td><td><button class="danger" onclick="deleteClosedDate(${d.id})">削除</button></td></tr>`;
+        const slotLabel = d.time_slot === 'morning' ? '午前（0-12時）' : '午後（12-24時）';
+        html += `<tr>
+            <td>${d.date}</td>
+            <td>${slotLabel}</td>
+            <td>${d.reason}</td>
+            <td><button class="danger" onclick="deleteClosedDate(${d.id})">削除</button></td>
+        </tr>`;
     });
     html += '</table>';
     document.getElementById('closed-dates-list').innerHTML = html;
 }
 async function addClosedDate() {
     const date = document.getElementById('new-closed-date').value;
+    const time_slot = document.getElementById('new-closed-slot').value;
     if (!date) return alert('日付を選択してください');
-    const res = await fetch('/api/closed-dates', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({date, reason:'休業日'}) });
-    if (res.ok) { alert('追加しました'); loadClosedDates(); }
-    else { const e = await res.json(); alert(e.error); }
+    const res = await fetch('/api/closed-dates', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({date, time_slot, reason: '休業日'})
+    });
+    if (res.ok) {
+        const slotLabel = time_slot === 'morning' ? '午前' : '午後';
+        alert(`${date} ${slotLabel}を休業日に設定しました`);
+        loadClosedDates();
+    } else {
+        const e = await res.json();
+        alert(e.error);
+    }
 }
 async function deleteClosedDate(id) {
     if (!confirm('削除しますか？')) return;
