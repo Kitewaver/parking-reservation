@@ -1249,7 +1249,9 @@ def landing():
     </section>
     <section>
         <h3>駐車場の様子</h3>
-        <img src="/static/parking_photo.png" alt="駐車場" style="width:100%;max-width:800px;display:block;margin:40px auto;border-radius:15px;" onerror="this.style.display='none'">
+        <img src="/static/parking_photo.png" alt="シャルマン鶴見市場No.1 駐車場外観" style="width:100%;max-width:800px;display:block;margin:20px auto;border-radius:15px;" onerror="this.style.display='none'">
+        <img src="/static/parking_space.jpg" alt="シャルマン鶴見市場No.1 駐車スペース" style="width:100%;max-width:800px;display:block;margin:20px auto;border-radius:15px;" onerror="this.style.display='none'">
+        <p style="text-align:center;color:#666;margin-top:10px;">平置きタイプで出し入れ簡単。建物向かって左側のスペースです。</p>
     </section>
     <section>
         <h3>駐車場スペック</h3>
@@ -2144,6 +2146,14 @@ def parking_photo():
     photo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'parking_photo.png')
     if os.path.exists(photo_path):
         return send_file(photo_path, mimetype='image/png')
+    return 'Photo not found', 404
+
+
+@app.route('/static/parking_space.jpg')
+def parking_space():
+    photo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'parking_space.jpg')
+    if os.path.exists(photo_path):
+        return send_file(photo_path, mimetype='image/jpeg')
     return 'Photo not found', 404
 
 
