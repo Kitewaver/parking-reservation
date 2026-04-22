@@ -1148,8 +1148,45 @@ def landing():
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>シャルマン鶴見市場 No.1 駐車場 | 鶴見市場駅徒歩3分</title>
-    <meta name="description" content="横浜市鶴見区の月極・時間貸し駐車場。鶴見市場駅徒歩3分。屋内駐車場で雨の日も安心。">
+    <title>シャルマン鶴見市場 No.1 駐車場 | 鶴見市場駅徒歩3分・当日予約OK</title>
+    <meta name="description" content="横浜市鶴見区の時間貸し駐車場。京急鶴見市場駅徒歩3分。午前¥500・午後¥1,100。当日予約OK・クレジットカード払い・スマホから簡単予約。">
+    <meta name="keywords" content="鶴見市場 駐車場, 横浜 鶴見 駐車場, シャルマン鶴見市場, 京急 鶴見市場駅 駐車場, 鶴見区 時間貸し駐車場, 市場大和町 駐車場">
+    <meta name="robots" content="index, follow">
+    <meta property="og:title" content="シャルマン鶴見市場 No.1 駐車場">
+    <meta property="og:description" content="京急鶴見市場駅徒歩3分。午前¥500・午後¥1,100。当日予約OK・スマホで簡単予約。">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://parking-reservation-rzck.onrender.com/">
+    <link rel="canonical" href="https://parking-reservation-rzck.onrender.com/">
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "ParkingFacility",
+      "name": "シャルマン鶴見市場 No.1 駐車場",
+      "description": "京急鶴見市場駅徒歩3分の時間貸し駐車場。午前¥500・午後¥1,100。当日予約OK。",
+      "url": "https://parking-reservation-rzck.onrender.com/",
+      "telephone": "090-6137-9489",
+      "address": {
+        "@type": "PostalAddress",
+        "streetAddress": "市場大和町4-9",
+        "addressLocality": "鶴見区",
+        "addressRegion": "神奈川県",
+        "postalCode": "230-0025",
+        "addressCountry": "JP"
+      },
+      "geo": {
+        "@type": "GeoCoordinates",
+        "latitude": 35.5172,
+        "longitude": 139.6844
+      },
+      "openingHours": "Mo-Su 00:00-24:00",
+      "priceRange": "¥500〜¥1,100",
+      "amenityFeature": [
+        {"@type": "LocationFeatureSpecification", "name": "オンライン予約", "value": true},
+        {"@type": "LocationFeatureSpecification", "name": "クレジットカード払い", "value": true},
+        {"@type": "LocationFeatureSpecification", "name": "当日予約", "value": true}
+      ]
+    }
+    </script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.6; color: #333; }
