@@ -1257,7 +1257,7 @@ def landing():
             <table class="spec-table">
                 <tr><td>長さ</td><td>500cm</td></tr>
                 <tr><td>幅</td><td>190cm</td></tr>
-                <tr><td>高さ</td><td>220cm（制限なし）</td></tr>
+                <tr><td>高さ</td><td>220cm</td></tr>
                 <tr><td>重量制限</td><td>2,000kg</td></tr>
                 <tr><td>車室タイプ</td><td>屋外平置き</td></tr>
             </table>
