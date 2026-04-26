@@ -1701,6 +1701,16 @@ document.getElementById('reservation-form').addEventListener('submit', async (e)
         email: document.getElementById('email').value
     };
 
+    
+    // 日付が選択されているか確認
+    if (!formData.date) {
+        messageDiv.innerHTML = '<p style="color: red;">ご利用日を選択してください</p>';
+        isSubmitting = false;
+        submitBtn.disabled = false;
+        submitBtn.textContent = '予約を確定';
+        return;
+    }
+    
     try {
         const res = await fetch('/api/create-payment-intent', {
             method: 'POST',
