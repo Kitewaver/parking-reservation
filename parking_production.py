@@ -595,6 +595,13 @@ def month_availability():
 def create_payment_intent():
     try:
         data = request.json
+        
+        # 必須項目チェック
+        required_fields = ['date', 'time_slot', 'car_number', 'customer_name', 'phone', 'email']
+        for field in required_fields:
+            if not data.get(field):
+                return jsonify({'error': f'{field}は必須項目です'}), 400
+        
         time_slot = data.get('time_slot')
         date = data.get('date')
 
