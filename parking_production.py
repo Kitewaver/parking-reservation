@@ -1512,8 +1512,11 @@ def index():
 <script>
 // ── Stripe セットアップ ──
 const stripe = Stripe('{{ stripe_public_key }}');
-let elements = null;
-let paymentElement = null;
+const elements = stripe.elements();
+const paymentElement = elements.create('payment', {
+    layout: 'tabs'  // カード/PayPay等をタブ表示
+});
+paymentElement.mount('#payment-element');
 
 // ── 改善2: 月カレンダー ──
 const today = new Date();
