@@ -1337,7 +1337,7 @@ def index():
             font-size: 16px; font-weight: bold; cursor: pointer;
         }
         button[type="submit"]:disabled { opacity: 0.5; cursor: not-allowed; }
-        #card-element { padding: 12px; border: 1px solid #ddd; border-radius: 6px; }
+        #payment-element { padding: 12px; border: 1px solid #ddd; border-radius: 6px; }
         .error { color: #e74c3c; margin-top: 10px; font-size: 14px; }
         .success { color: #27ae60; margin-top: 10px; font-size: 14px; }
 
@@ -1489,8 +1489,8 @@ def index():
             </div>
             <div class="form-group">
                 <label>カード情報</label>
-                <div id="card-element"></div>
-                <div id="card-errors" class="error"></div>
+                <div id="payment-element"></div>
+                <div id="payment-errors" class="error"></div>
             </div>
 
             <button type="submit" id="submit-button">予約を確定する</button>
@@ -1512,9 +1512,8 @@ def index():
 <script>
 // ── Stripe セットアップ ──
 const stripe = Stripe('{{ stripe_public_key }}');
-const elements = stripe.elements();
-const cardElement = elements.create('card', { hidePostalCode: true });
-cardElement.mount('#card-element');
+let elements = null;
+let paymentElement = null;
 
 // ── 改善2: 月カレンダー ──
 const today = new Date();
@@ -1926,6 +1925,152 @@ async function doCancel() {
 # ─────────────────────────────────────────
 # API: トークンから予約情報取得（キャンセルページ用）
 # ─────────────────────────────────────────
+
+
+@app.route('/payment-complete')
+def payment_complete():
+    """決済完了ページ"""
+    payment_intent_id = request.args.get('payment_intent')
+    
+    if not payment_intent_id:
+        return redirect('/')
+    
+    try:
+        # Stripeから決済情報を取得
+        payment_intent = stripe.PaymentIntent.retrieve(payment_intent_id)
+        
+        # 決済方法を判定
+        payment_method_type = None
+        card_info = None
+        
+        if payment_intent.charges.data:
+            charge = payment_intent.charges.data[0]
+            payment_method_type = charge.payment_method_details.type
+            
+            if payment_method_type == 'card':
+                card_info = {
+                    'brand': charge.payment_method_details.card.brand,
+                    'last4': charge.payment_method_details.card.last4
+                }
+        
+        # DBから予約情報を取得
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        if USE_POSTGRES:
+            cursor.execute(
+                "SELECT * FROM reservations WHERE payment_id = %s",
+                (payment_intent_id,)
+            )
+        else:
+            cursor.execute(
+                "SELECT * FROM reservations WHERE payment_id = ?",
+                (payment_intent_id,)
+            )
+        
+        row = cursor.fetchone()
+        conn.close()
+        
+        if not row:
+            return redirect('/')
+        
+        reservation = {
+            'id': row[0],
+            'date': row[1],
+            'time_slot': row[2],
+            'car_number': row[3],
+            'customer_name': row[4],
+            'phone': row[5],
+            'email': row[6],
+            'amount': payment_intent.amount
+        }
+        
+        # 時間帯の表示名
+        time_slot_name = '午前（0:00～12:00）' if row[2] == 'morning' else '午後（12:00～24:00）'
+        
+        # 決済方法の表示名
+        if payment_method_type == 'card':
+            payment_display = f"💳 {card_info['brand'].title()} ****{card_info['last4']}"
+        elif payment_method_type == 'paypay':
+            payment_display = "💴 PayPay"
+        else:
+            payment_display = "決済完了"
+        
+        html = f"""
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>予約完了 - シャルマン鶴見市場 No.1</title>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{ font-family: 'Segoe UI', sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }}
+        .container {{ background: white; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); max-width: 600px; width: 100%; padding: 40px; }}
+        .success-icon {{ text-align: center; font-size: 64px; margin-bottom: 20px; }}
+        h1 {{ text-align: center; color: #2d3748; margin-bottom: 30px; font-size: 28px; }}
+        .info-box {{ background: #f7fafc; border-radius: 8px; padding: 20px; margin-bottom: 20px; }}
+        .info-row {{ display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #e2e8f0; }}
+        .info-row:last-child {{ border-bottom: none; }}
+        .info-label {{ color: #718096; font-weight: 500; }}
+        .info-value {{ color: #2d3748; font-weight: 600; }}
+        .payment-method {{ text-align: center; font-size: 24px; padding: 20px; background: #edf2f7; border-radius: 8px; margin: 20px 0; }}
+        .email-notice {{ text-align: center; color: #718096; margin: 20px 0; }}
+        .btn-home {{ display: block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-align: center; padding: 15px; border-radius: 8px; text-decoration: none; font-weight: 600; margin-top: 30px; transition: transform 0.2s; }}
+        .btn-home:hover {{ transform: translateY(-2px); }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="success-icon">✅</div>
+        <h1>予約が完了しました</h1>
+        
+        <div class="info-box">
+            <div class="info-row">
+                <span class="info-label">予約番号</span>
+                <span class="info-value">#{reservation['id']}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">ご利用日</span>
+                <span class="info-value">{reservation['date']}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">時間帯</span>
+                <span class="info-value">{time_slot_name}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">車両番号</span>
+                <span class="info-value">{reservation['car_number']}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">お名前</span>
+                <span class="info-value">{reservation['customer_name']}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">料金</span>
+                <span class="info-value">¥{reservation['amount']:,}</span>
+            </div>
+        </div>
+        
+        <div class="payment-method">{payment_display}</div>
+        
+        <div class="email-notice">
+            📧 確認メールを送信しました<br>
+            {reservation['email']}
+        </div>
+        
+        <a href="/" class="btn-home">トップページに戻る</a>
+    </div>
+</body>
+</html>
+        """
+        
+        return html
+        
+    except Exception as e:
+        print(f"❌ 決済完了ページエラー: {e}")
+        return redirect('/')
+
 
 @app.route('/api/reservation-by-token', methods=['GET'])
 def reservation_by_token():
