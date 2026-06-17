@@ -354,6 +354,13 @@ def init_database():
                 UNIQUE(date, time_slot)
             )
         ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT,
+                updated_at TEXT
+            )
+        ''')
         # 既存テーブルへのカラム追加（既存DB対応）
         for col, typedef in [
             ('calendar_event_id', 'TEXT'),
@@ -409,6 +416,13 @@ def init_database():
                 UNIQUE(date, time_slot)
             )
         ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT,
+                updated_at TEXT
+            )
+        ''')
 
     conn.commit()
     conn.close()
@@ -421,6 +435,47 @@ init_database()
 # ─────────────────────────────────────────
 # ビジネスロジック
 # ─────────────────────────────────────────
+
+def get_setting(key):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    if USE_POSTGRES:
+        cursor.execute('SELECT value FROM settings WHERE key = %s', (key,))
+    else:
+        cursor.execute('SELECT value FROM settings WHERE key = ?', (key,))
+    row = cursor.fetchone()
+    conn.close()
+    return row[0] if row else None
+
+
+def set_setting(key, value):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    now = datetime.now().isoformat()
+    if USE_POSTGRES:
+        cursor.execute(
+            'INSERT INTO settings (key, value, updated_at) VALUES (%s, %s, %s) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at',
+            (key, value, now)
+        )
+    else:
+        cursor.execute(
+            'INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, ?)',
+            (key, value, now)
+        )
+    conn.commit()
+    conn.close()
+
+
+def delete_setting(key):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    if USE_POSTGRES:
+        cursor.execute('DELETE FROM settings WHERE key = %s', (key,))
+    else:
+        cursor.execute('DELETE FROM settings WHERE key = ?', (key,))
+    conn.commit()
+    conn.close()
+
 
 def calculate_price(time_slot):
     if time_slot == "morning":
@@ -460,6 +515,10 @@ def check_availability():
         if selected_date.date() == now.date():
             if time_slot == "morning" and now.hour >= 12:
                 return jsonify({'available': False, 'reason': 'time_passed'})
+
+        cutoff = get_setting('reservation_cutoff_date')
+        if cutoff and selected_date.date() >= datetime.fromisoformat(cutoff).date():
+            return jsonify({'available': False, 'reason': 'suspended'})
 
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -555,6 +614,9 @@ def month_availability():
         closed = {(row[0], row[1]) for row in cursor.fetchall()}
         conn.close()
 
+        cutoff = get_setting('reservation_cutoff_date')
+        cutoff_date = datetime.fromisoformat(cutoff).date() if cutoff else None
+
         result = {}
         current = month_start
         while current <= month_end:
@@ -563,6 +625,8 @@ def month_availability():
 
             if current < today:
                 day_status = {"morning": "past", "afternoon": "past"}
+            elif cutoff_date and current >= cutoff_date:
+                day_status = {"morning": "suspended", "afternoon": "suspended"}
             else:
                 for slot in ["morning", "afternoon"]:
                     if (date_str, slot) in closed:
@@ -898,6 +962,35 @@ def get_reservations():
         })
     conn.close()
     return jsonify({'total': len(reservations), 'reservations': reservations})
+
+
+@app.route('/api/settings/reservation-cutoff', methods=['GET'])
+@require_admin_auth
+def get_reservation_cutoff():
+    value = get_setting('reservation_cutoff_date')
+    return jsonify({'reservation_cutoff_date': value})
+
+
+@app.route('/api/settings/reservation-cutoff', methods=['POST'])
+@require_admin_auth
+def set_reservation_cutoff():
+    data = request.json
+    date_str = data.get('date')
+    if not date_str:
+        return jsonify({'error': '日付を指定してください'}), 400
+    try:
+        datetime.fromisoformat(date_str)
+    except ValueError:
+        return jsonify({'error': '日付形式が不正です（YYYY-MM-DD）'}), 400
+    set_setting('reservation_cutoff_date', date_str)
+    return jsonify({'success': True, 'reservation_cutoff_date': date_str})
+
+
+@app.route('/api/settings/reservation-cutoff', methods=['DELETE'])
+@require_admin_auth
+def delete_reservation_cutoff():
+    delete_setting('reservation_cutoff_date')
+    return jsonify({'success': True})
 
 
 @app.route('/api/closed-dates', methods=['GET'])
@@ -1379,10 +1472,12 @@ def index():
             .cal-cell .cal-date { font-size: 11px; }
             .slot-badge { font-size: 8px; }
         }
-        .badge-available { background: #d4edda; color: #155724; }
-        .badge-reserved  { background: #f8d7da; color: #721c24; }
-        .badge-closed    { background: #f8d7da; color: #721c24; }
-        .badge-past      { background: #e9ecef; color: #6c757d; }
+        .badge-available  { background: #d4edda; color: #155724; }
+        .badge-reserved   { background: #f8d7da; color: #721c24; }
+        .badge-closed     { background: #f8d7da; color: #721c24; }
+        .badge-past       { background: #e9ecef; color: #6c757d; }
+        .badge-suspended  { background: #e2d9f3; color: #5a3e8e; }
+        .cal-cell.suspended { background: #f3f0fa; border-color: #c9b8e8; }
         .cal-loading { text-align: center; padding: 30px; color: #999; font-size: 14px; }
         .cal-legend { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 10px; font-size: 11px; color: #555; }
         .legend-item { display: flex; align-items: center; gap: 4px; }
@@ -1449,6 +1544,7 @@ def index():
                     <div class="legend-item"><div class="legend-dot" style="background:#fff0f0;border:1px solid #fcc;"></div>満室</div>
                     <div class="legend-item"><div class="legend-dot" style="background:#fee;border:1px solid #fcc;"></div>休業日</div>
                     <div class="legend-item"><div class="legend-dot" style="background:#fffbe6;border:1px solid #ffe;"></div>一部空き</div>
+                    <div class="legend-item"><div class="legend-dot" style="background:#f3f0fa;border:1px solid #c9b8e8;"></div>月極専用</div>
                 </div>
                 <input type="hidden" id="date" required>
             </div>
@@ -1545,6 +1641,7 @@ async function fetchMonthAvailability(year, month) {
 function getDayCellClass(dayData) {
     if (!dayData) return 'past';
     const { morning, afternoon } = dayData;
+    if (morning === 'suspended' && afternoon === 'suspended') return 'suspended';
     if (morning === 'closed' && afternoon === 'closed') return 'closed';
     if (morning === 'past' && afternoon === 'past') return 'past';
     const bothUnavailable = (s) => s === 'reserved' || s === 'past' || s === 'closed';
@@ -1555,16 +1652,18 @@ function getDayCellClass(dayData) {
 
 function slotBadgeHTML(status, label) {
     const cls = {
-        available: 'badge-available',
-        reserved:  'badge-reserved',
-        closed:    'badge-closed',
-        past:      'badge-past',
+        available:  'badge-available',
+        reserved:   'badge-reserved',
+        closed:     'badge-closed',
+        past:       'badge-past',
+        suspended:  'badge-suspended',
     }[status] || 'badge-past';
     const text = {
-        available: '空',
-        reserved:  '済',
-        closed:    '休',
-        past:      '-',
+        available:  '空',
+        reserved:   '済',
+        closed:     '休',
+        past:       '-',
+        suspended:  '停',
     }[status] || '-';
     // ラベルも短縮（午前→前、午後→後）
     const shortLabel = label === '午前' ? '前' : '後';
@@ -1650,7 +1749,7 @@ function updateTimeSlots(dayData) {
         } else {
             el.classList.add('unavailable');
             el.style.pointerEvents = 'none';
-            const msg = st === 'reserved' ? '予約済み' : st === 'closed' ? '休業日' : '----';
+            const msg = st === 'reserved' ? '予約済み' : st === 'closed' ? '休業日' : st === 'suspended' ? '月極専用（予約不可）' : '----';
             statusEl.innerHTML = `<span style="color:#999;font-size:11px;">${msg}</span>`;
         }
     });
@@ -2066,11 +2165,26 @@ def admin():
     <div class="tabs">
         <div class="tab active" onclick="switchTab('reservations',this)">予約一覧</div>
         <div class="tab" onclick="switchTab('closed',this)">休業日設定</div>
+        <div class="tab" onclick="switchTab('suspension',this)">予約停止設定</div>
     </div>
     <div id="reservations" class="tab-content active">
         <div class="section">
             <h2>予約一覧</h2>
             <div id="reservations-list"></div>
+        </div>
+    </div>
+    <div id="suspension" class="tab-content">
+        <div class="section">
+            <h2>月極駐車場切替による予約停止</h2>
+            <p style="margin-bottom:16px;color:#555;">指定日以降の予約を停止します。再開する場合は設定を解除してください。</p>
+            <div id="suspension-status" style="margin-bottom:16px;padding:12px;border-radius:6px;background:#f0f0f0;"></div>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
+                <label style="font-weight:bold;">予約停止開始日：</label>
+                <input type="date" id="cutoff-date" style="padding:8px;border:1px solid #ddd;border-radius:4px;">
+                <button onclick="setCutoff()">設定する</button>
+                <button class="danger" onclick="clearCutoff()">停止を解除する</button>
+            </div>
+            <p style="font-size:12px;color:#888;">※設定した日以降はすべてのスロットが予約不可となります。</p>
         </div>
     </div>
     <div id="closed" class="tab-content">
@@ -2100,6 +2214,45 @@ function switchTab(tab, el) {
     document.getElementById(tab).classList.add('active');
     if (tab === 'reservations') loadReservations();
     if (tab === 'closed') loadClosedDates();
+    if (tab === 'suspension') loadCutoff();
+}
+async function loadCutoff() {
+    const res = await fetch('/api/settings/reservation-cutoff');
+    const data = await res.json();
+    const el = document.getElementById('suspension-status');
+    const dateInput = document.getElementById('cutoff-date');
+    if (data.reservation_cutoff_date) {
+        el.style.background = '#ffe0e0';
+        el.innerHTML = `<strong>⚠️ 予約停止中：</strong> ${data.reservation_cutoff_date} 以降は予約不可に設定されています。`;
+        dateInput.value = data.reservation_cutoff_date;
+    } else {
+        el.style.background = '#e0f5e0';
+        el.innerHTML = '<strong>✅ 通常営業中：</strong> 予約停止は設定されていません。';
+        dateInput.value = '';
+    }
+}
+async function setCutoff() {
+    const date = document.getElementById('cutoff-date').value;
+    if (!date) return alert('停止開始日を選択してください');
+    if (!confirm(`${date} 以降の予約を停止します。よろしいですか？`)) return;
+    const res = await fetch('/api/settings/reservation-cutoff', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({date})
+    });
+    if (res.ok) {
+        alert(`${date} 以降の予約を停止しました`);
+        loadCutoff();
+    } else {
+        const e = await res.json();
+        alert(e.error);
+    }
+}
+async function clearCutoff() {
+    if (!confirm('予約停止を解除して通常営業に戻しますか？')) return;
+    await fetch('/api/settings/reservation-cutoff', { method: 'DELETE' });
+    alert('予約停止を解除しました');
+    loadCutoff();
 }
 async function loadReservations() {
     const res = await fetch('/api/reservations');
@@ -2174,6 +2327,13 @@ def parking_space():
     return 'Photo not found', 404
 
 
+def apply_default_settings():
+    """初回起動時のデフォルト設定を適用（既に設定済みの場合は上書きしない）"""
+    if get_setting('reservation_cutoff_date') is None:
+        set_setting('reservation_cutoff_date', '2026-07-20')
+        print("📅 予約停止日を 2026-07-20 に設定しました（月極駐車場切替）")
+
+
 if __name__ == '__main__':
     print("=" * 60)
     print("🚀 駐車場予約システム v2（改善1・2適用版）")
@@ -2182,11 +2342,13 @@ if __name__ == '__main__':
     print("📊 管理画面:     http://localhost:5000/admin")
     print("=" * 60)
     init_database()
+    apply_default_settings()
     app.run(host='0.0.0.0', port=5000, debug=True)
 else:
     print(f"🔗 DB: {'PostgreSQL' if USE_POSTGRES else 'SQLite'}")
     try:
         init_database()
+        apply_default_settings()
         cleanup_old_pending_reservations()
         print("✅ 起動準備完了")
     except Exception as e:
